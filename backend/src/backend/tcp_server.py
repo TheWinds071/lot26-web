@@ -81,7 +81,7 @@ class TCPServer:
                     break
 
                 buffer += data.decode("utf-8", errors="replace")
-                
+
                 # Support newline-delimited packets
                 while "\n" in buffer:
                     line, buffer = buffer.split("\n", 1)
@@ -89,39 +89,44 @@ class TCPServer:
                     if not line:
                         continue
 
-                    telemetry = self.parse_telemetry_payload(line)
-                    if telemetry:
-                        logger.info(
-                            f"[TCP Server] Telemetry from {client_address}: "
-                            f"Temp={telemetry.temperature:.1f}°C, "
-                            f"Press={telemetry.pressure:.2f}MPa, "
-                            f"Flow={telemetry.flow_rate:.1f}L/min"
-                        )
-                        # Process through auto-control engine & store state
-                        state_manager.process_telemetry(telemetry)
+                    try:
+                        telemetry = self.parse_telemetry_payload(line)
+                        if telemetry:
+                            logger.info(
+                                f"[TCP Server] Telemetry from {client_address}: "
+                                f"Temp={telemetry.temperature:.1f}°C, "
+                                f"Press={telemetry.pressure:.2f}MPa, "
+                                f"Flow={telemetry.flow_rate:.1f}L/min"
+                            )
+                            # Process through auto-control engine & store state
+                            state_manager.process_telemetry(telemetry)
 
-                        # Downlink command response to client/PLC actuator
-                        response = {
-                            "status": "ACK",
-                            "pump_active": state_manager.device_state.pump_active,
-                            "pump_speed": state_manager.device_state.pump_speed,
-                            "heater_active": state_manager.device_state.heater_active,
-                            "heater_power": state_manager.device_state.heater_power,
-                            "emergency_stop": state_manager.device_state.emergency_stop,
-                            "auto_mode": state_manager.device_state.auto_mode,
-                            "timestamp": datetime.now().isoformat(),
-                        }
-                        writer.write((json.dumps(response) + "\n").encode("utf-8"))
-                        await writer.drain()
-                    else:
-                        logger.warning(f"[TCP Server] Unrecognized payload: {line}")
-                        writer.write(b'{"status":"ERROR","message":"Invalid payload format"}\n')
+                            # Downlink command response to client/PLC actuator
+                            response = {
+                                "status": "ACK",
+                                "pump_active": state_manager.device_state.pump_active,
+                                "pump_speed": state_manager.device_state.pump_speed,
+                                "heater_active": state_manager.device_state.heater_active,
+                                "heater_power": state_manager.device_state.heater_power,
+                                "emergency_stop": state_manager.device_state.emergency_stop,
+                                "auto_mode": state_manager.device_state.auto_mode,
+                                "timestamp": datetime.now().isoformat(),
+                            }
+                            writer.write((json.dumps(response) + "\n").encode("utf-8"))
+                            await writer.drain()
+                        else:
+                            logger.warning(f"[TCP Server] Unrecognized payload: {line}")
+                            writer.write(b'{"status":"ERROR","message":"Invalid payload format"}\n')
+                            await writer.drain()
+                    except Exception as packet_err:
+                        logger.error(f"[TCP Server] Error processing packet '{line}' from {client_address}: {packet_err}")
+                        writer.write(b'{"status":"ERROR","message":"Internal processing error"}\n')
                         await writer.drain()
 
         except asyncio.CancelledError:
             logger.info(f"[TCP Server] Handler for {client_address} cancelled.")
         except Exception as e:
-            logger.error(f"[TCP Server] Error handling client {client_address}: {e}")
+            logger.error(f"[TCP Server] Connection error with client {client_address}: {e}")
         finally:
             self._active_clients.discard(writer)
             if not self._active_clients:

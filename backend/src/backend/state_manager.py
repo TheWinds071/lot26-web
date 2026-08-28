@@ -62,11 +62,17 @@ class StateManager:
                 logger.error(f"Error dispatching state event: {e}")
 
     def add_alarm(
-        self, level: str, alarm_type: str, message: str, value: Optional[float] = None
+        self,
+        level: str,
+        type: str = "",
+        message: str = "",
+        value: Optional[float] = None,
+        alarm_type: Optional[str] = None,
     ) -> AlarmEvent:
+        actual_type = alarm_type or type
         # Check if identical active alarm exists to avoid spamming
         for existing in self.alarms:
-            if existing.type == alarm_type and not existing.resolved:
+            if existing.type == actual_type and not existing.resolved:
                 existing.message = message
                 existing.value = value
                 existing.timestamp = datetime.now()
@@ -76,13 +82,13 @@ class StateManager:
             id=str(uuid.uuid4())[:8],
             timestamp=datetime.now(),
             level=level,
-            type=alarm_type,
+            type=actual_type,
             message=message,
             value=value,
             resolved=False,
         )
         self.alarms.appendleft(alarm)
-        logger.warning(f"[ALARM] [{level}] {alarm_type}: {message}")
+        logger.warning(f"[ALARM] [{level}] {actual_type}: {message}")
         self._notify("alarm", alarm.model_dump(mode="json"))
         return alarm
 

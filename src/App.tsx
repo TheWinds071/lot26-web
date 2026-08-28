@@ -1,122 +1,263 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import React, { useEffect, useRef, useState } from 'react';
+import './App.css';
+import { AlarmLogs } from './components/AlarmLogs';
+import { ControlPanel } from './components/ControlPanel';
+import { Header } from './components/Header';
+import { PipelineTopology } from './components/PipelineTopology';
+import { RealtimeCharts } from './components/RealtimeCharts';
+import { TelemetryCards } from './components/TelemetryCards';
+import type { AlarmEvent, SystemStatus, TelemetryData, ThresholdConfig } from './types';
 
-function App() {
-  const [count, setCount] = useState(0)
+export const App: React.FC = () => {
+  const [status, setStatus] = useState<SystemStatus | null>(null);
+  const [history, setHistory] = useState<TelemetryData[]>([]);
+  const [wsConnected, setWsConnected] = useState<boolean>(false);
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<number | null>(null);
+
+  // Connect WebSocket
+  const connectWebSocket = () => {
+    if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws/telemetry`;
+
+    try {
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        setWsConnected(true);
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current);
+          reconnectTimeoutRef.current = null;
+        }
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload.type === 'init') {
+            setStatus(payload.status);
+            setHistory(payload.history || []);
+          } else if (payload.type === 'telemetry') {
+            const newTelemetry: TelemetryData = payload.data.telemetry;
+            const updatedStatus: SystemStatus = payload.data.status;
+            setStatus(updatedStatus);
+            setHistory((prev) => [...prev.slice(-120), newTelemetry]);
+          } else if (payload.type === 'device_state_updated') {
+            setStatus((prev) => prev ? { ...prev, device_state: payload.data } : null);
+          } else if (payload.type === 'thresholds_updated') {
+            setStatus((prev) => prev ? { ...prev, thresholds: payload.data } : null);
+          } else if (payload.type === 'alarm') {
+            const newAlarm: AlarmEvent = payload.data;
+            setStatus((prev) => {
+              if (!prev) return null;
+              const filtered = prev.active_alarms.filter((a) => a.id !== newAlarm.id);
+              return { ...prev, active_alarms: [newAlarm, ...filtered] };
+            });
+          } else if (payload.type === 'alarm_resolved') {
+            setStatus((prev) => {
+              if (!prev) return null;
+              return {
+                ...prev,
+                active_alarms: prev.active_alarms.filter((a) => a.type !== payload.data.type),
+              };
+            });
+          }
+        } catch (err) {
+          console.error('WebSocket parse error:', err);
+        }
+      };
+
+      ws.onclose = () => {
+        setWsConnected(false);
+        wsRef.current = null;
+        // Auto-reconnect after 2 seconds
+        if (!reconnectTimeoutRef.current) {
+          reconnectTimeoutRef.current = window.setTimeout(connectWebSocket, 2000);
+        }
+      };
+
+      ws.onerror = () => {
+        setWsConnected(false);
+        ws.close();
+      };
+    } catch (e) {
+      console.error('Failed to create WebSocket:', e);
+      if (!reconnectTimeoutRef.current) {
+        reconnectTimeoutRef.current = window.setTimeout(connectWebSocket, 2000);
+      }
+    }
+  };
+
+  // Initial REST fetch & periodic health polling fallback
+  const fetchStatus = async () => {
+    try {
+      const res = await fetch('/api/status');
+      if (res.ok) {
+        const data: SystemStatus = await res.json();
+        setStatus(data);
+      }
+      const histRes = await fetch('/api/history?limit=60');
+      if (histRes.ok) {
+        const histData: TelemetryData[] = await histRes.json();
+        setHistory(histData);
+      }
+    } catch {
+      // Backend maybe starting up
+    }
+  };
+
+  useEffect(() => {
+    fetchStatus();
+    connectWebSocket();
+
+    const pollInterval = setInterval(() => {
+      if (!wsConnected) {
+        fetchStatus();
+      }
+    }, 3000);
+
+    return () => {
+      clearInterval(pollInterval);
+      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+      if (wsRef.current) wsRef.current.close();
+    };
+  }, []);
+
+  // Send action via WebSocket or REST
+  const sendWsMessage = (msg: object) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(msg));
+    }
+  };
+
+  const handleSetMode = async (autoMode: boolean) => {
+    sendWsMessage({ action: 'set_mode', auto_mode: autoMode });
+    try {
+      await fetch('/api/control/mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auto_mode: autoMode }),
+      });
+      fetchStatus();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleControlPump = async (active: boolean, speed?: number) => {
+    sendWsMessage({ action: 'set_pump', active, speed });
+    try {
+      await fetch('/api/control/pump', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active, speed }),
+      });
+      fetchStatus();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleControlHeater = async (active: boolean, power?: number) => {
+    sendWsMessage({ action: 'set_heater', active, power });
+    try {
+      await fetch('/api/control/heater', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active, power }),
+      });
+      fetchStatus();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleEmergencyStop = async (emergencyStop: boolean) => {
+    sendWsMessage({ action: 'set_emergency_stop', emergency_stop: emergencyStop });
+    try {
+      await fetch('/api/control/emergency_stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emergency_stop: emergencyStop }),
+      });
+      fetchStatus();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleUpdateThresholds = async (config: ThresholdConfig) => {
+    sendWsMessage({ action: 'update_thresholds', thresholds: config });
+    try {
+      await fetch('/api/config/thresholds', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config),
+      });
+      fetchStatus();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleClearAlarms = async () => {
+    try {
+      await fetch('/api/alarms', { method: 'DELETE' });
+      setStatus((prev) => prev ? { ...prev, active_alarms: [] } : null);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <div className="app-container">
+      {/* 1. Header with System Status & Emergency Action */}
+      <Header
+        status={status}
+        wsConnected={wsConnected}
+        onEmergencyStop={handleEmergencyStop}
+      />
 
-      <div className="ticks"></div>
+      <main className="dashboard-content">
+        {/* 2. Real-time Telemetry Metrics Cards */}
+        <TelemetryCards
+          telemetry={status?.telemetry}
+          deviceState={status?.device_state}
+          thresholds={status?.thresholds}
+        />
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+        {/* 3. Visual SVG Pipeline Topology Schematic */}
+        <PipelineTopology
+          telemetry={status?.telemetry}
+          deviceState={status?.device_state}
+        />
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
-}
+        {/* 4. Real-time Waveform Dynamic Trends */}
+        <RealtimeCharts history={history} />
 
-export default App
+        {/* 5. Control Center & Threshold Settings */}
+        <ControlPanel
+          deviceState={status?.device_state}
+          thresholds={status?.thresholds}
+          onSetMode={handleSetMode}
+          onControlPump={handleControlPump}
+          onControlHeater={handleControlHeater}
+          onUpdateThresholds={handleUpdateThresholds}
+        />
+
+        {/* 6. Alarm & Event Logs */}
+        <AlarmLogs
+          alarms={status?.active_alarms || []}
+          onClearAlarms={handleClearAlarms}
+        />
+      </main>
+    </div>
+  );
+};
+
+export default App;

@@ -60,56 +60,78 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   };
 
   return (
-    <div className="controls-container">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 md:gap-6">
       {/* 1. Actuator Remote Control Card */}
-      <div className="control-card">
-        <div className="control-card-header">
-          <div className="section-title-group">
-            <Sliders className="section-title-icon" size={20} />
-            <h3>执行器控制中心</h3>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 md:p-6 transition-all duration-200">
+        <div className="flex items-center justify-between gap-3 mb-5">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 border border-blue-200 flex items-center justify-center">
+              <Sliders className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold tracking-tight text-gray-900">
+                执行器控制中心
+              </h3>
+              <p className="text-xs text-gray-500 font-normal">
+                Actuator Overrides & Operating Modes
+              </p>
+            </div>
           </div>
+
           {/* Mode Switcher */}
-          <div className="mode-toggle-group">
-            <span className="mode-label">自控模式</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500 font-medium">运行模式</span>
             <button
-              className={`btn-mode-toggle ${isAuto ? 'btn-mode-auto' : 'btn-mode-manual'}`}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border shadow-xs transition-all duration-200 active:scale-[0.98] ${
+                isAuto
+                  ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                  : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+              }`}
               onClick={() => onSetMode(!isAuto)}
               title={isAuto ? "切换为手动模式" : "切换为智能自控模式"}
             >
-              {isAuto ? <ToggleRight size={26} /> : <ToggleLeft size={26} />}
-              <span>{isAuto ? '已开启' : '手动模式'}</span>
+              {isAuto ? <ToggleRight className="w-4 h-4 text-blue-600" /> : <ToggleLeft className="w-4 h-4 text-amber-600" />}
+              <span>{isAuto ? '智能自控' : '手动模式'}</span>
             </button>
           </div>
         </div>
 
         {isEmergency && (
-          <div className="emergency-warning-banner">
-            ⚠️ 紧急急停已触发！所有手动控制已被锁定，请先解除顶部急停。
+          <div className="mb-4 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-center gap-2">
+            <span>⚠️ 紧急急停已触发！所有手动控制已被锁定，请先解除顶部急停。</span>
           </div>
         )}
 
-        <div className="actuators-control-grid">
+        <div className="space-y-4">
           {/* Pump Control Section */}
-          <div className={`control-block ${!isAuto ? 'highlight-manual' : ''}`}>
-            <div className="control-block-header">
-              <div className="block-title">
-                <RotateCw size={18} className={isPumpActive ? 'spinning' : ''} />
-                <span>循环水泵控制</span>
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 transition-all duration-200">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <RotateCw
+                  className={`w-4 h-4 ${
+                    isPumpActive ? 'text-blue-600 animate-spin' : 'text-gray-400'
+                  }`}
+                />
+                <span className="text-sm font-semibold text-gray-800">循环水泵</span>
               </div>
               <button
                 disabled={isEmergency}
-                className={`btn-switch ${isPumpActive ? 'btn-switch-on' : 'btn-switch-off'}`}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium shadow-xs transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed ${
+                  isPumpActive
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                }`}
                 onClick={() => onControlPump(!isPumpActive, pumpSpeed)}
               >
-                <Power size={14} />
+                <Power className="w-3.5 h-3.5" />
                 <span>{isPumpActive ? '运行中' : '已停止'}</span>
               </button>
             </div>
 
-            <div className="control-slider-group">
-              <div className="slider-label-row">
-                <span>水泵转速/功率设定</span>
-                <span className="slider-value">{pumpSpeed}%</span>
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-xs text-gray-600">
+                <span>水泵转速设定</span>
+                <span className="font-mono font-bold text-gray-900">{pumpSpeed}%</span>
               </div>
               <input
                 type="range"
@@ -119,32 +141,40 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 value={pumpSpeed}
                 disabled={isEmergency}
                 onChange={(e) => onControlPump(isPumpActive, Number(e.target.value))}
-                className="custom-range range-blue"
+                className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600 disabled:opacity-50"
               />
             </div>
           </div>
 
           {/* Heater Control Section */}
-          <div className={`control-block ${!isAuto ? 'highlight-manual' : ''}`}>
-            <div className="control-block-header">
-              <div className="block-title">
-                <Flame size={18} className={isHeaterActive ? 'glowing-fire' : ''} />
-                <span>加热模块控制</span>
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 transition-all duration-200">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Flame
+                  className={`w-4 h-4 ${
+                    isHeaterActive ? 'text-amber-500 animate-pulse' : 'text-gray-400'
+                  }`}
+                />
+                <span className="text-sm font-semibold text-gray-800">加热模块</span>
               </div>
               <button
                 disabled={isEmergency}
-                className={`btn-switch ${isHeaterActive ? 'btn-switch-heating' : 'btn-switch-off'}`}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium shadow-xs transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed ${
+                  isHeaterActive
+                    ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                }`}
                 onClick={() => onControlHeater(!isHeaterActive, isHeaterActive ? 0 : 100)}
               >
-                <Power size={14} />
+                <Power className="w-3.5 h-3.5" />
                 <span>{isHeaterActive ? '加热中' : '待机'}</span>
               </button>
             </div>
 
-            <div className="control-slider-group">
-              <div className="slider-label-row">
-                <span>加热输出功率设定</span>
-                <span className="slider-value">{heaterPower}%</span>
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-xs text-gray-600">
+                <span>加热输出功率</span>
+                <span className="font-mono font-bold text-gray-900">{heaterPower}%</span>
               </div>
               <input
                 type="range"
@@ -153,110 +183,155 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 step="10"
                 value={heaterPower}
                 disabled={isEmergency}
-                onChange={(e) => onControlHeater(Number(e.target.value) > 0, Number(e.target.value))}
-                className="custom-range range-orange"
+                onChange={(e) =>
+                  onControlHeater(Number(e.target.value) > 0, Number(e.target.value))
+                }
+                className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-600 disabled:opacity-50"
               />
             </div>
           </div>
         </div>
 
         {isAuto && (
-          <div className="auto-mode-hint">
-            💡 当前处于<strong>智能自控模式</strong>：系统将根据下方阈值自动启闭水泵与加热器，超压或水温过高时自动执行联锁保护。
+          <div className="mt-4 p-3 rounded-lg bg-blue-50/70 border border-blue-100 text-blue-900 text-xs leading-relaxed">
+            💡 <strong>智能自控模式生效中</strong>：系统实时评估下方阈值，自动调节水泵转速并精准恒温，遇超温或超压时秒级联锁停机。
           </div>
         )}
       </div>
 
       {/* 2. Threshold Configuration Card */}
-      <div className="control-card">
-        <div className="control-card-header">
-          <div className="section-title-group">
-            <Settings className="section-title-icon" size={20} />
-            <h3>自控规则与安全阈值设定</h3>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 md:p-6 transition-all duration-200">
+        <div className="flex items-center justify-between gap-3 mb-5">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 border border-blue-200 flex items-center justify-center">
+              <Settings className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold tracking-tight text-gray-900">
+                自控规则与安全阈值
+              </h3>
+              <p className="text-xs text-gray-500 font-normal">
+                Closed-Loop Thresholds & Safety Rules
+              </p>
+            </div>
           </div>
+
           {savedSuccess && (
-            <span className="save-success-tag">
-              <Check size={14} /> 已生效
+            <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 animate-fadeIn">
+              <Check className="w-3.5 h-3.5" /> 已生效
             </span>
           )}
         </div>
 
-        <form onSubmit={handleSaveThresholds} className="thresholds-form">
-          <div className="form-grid">
-            <div className="form-item">
-              <label>低温加热阈值 (Min Temp)</label>
-              <div className="input-group">
+        <form onSubmit={handleSaveThresholds} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            {/* Min Temp */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-700 block">
+                低温加热阈值 (Min Temp)
+              </label>
+              <div className="flex rounded-lg shadow-xs">
                 <input
                   type="number"
                   step="0.5"
                   value={tempMin}
                   onChange={(e) => setTempMin(Number(e.target.value))}
+                  className="w-full bg-white rounded-l-lg border border-gray-300 px-3 py-1.5 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 font-mono"
                 />
-                <span className="input-unit">°C</span>
+                <span className="bg-slate-50 border border-l-0 border-gray-300 px-3 py-1.5 text-gray-500 text-xs font-medium rounded-r-lg flex items-center">
+                  °C
+                </span>
               </div>
-              <span className="input-tip">水温低于此值时自动启动加热</span>
+              <span className="text-[11px] text-gray-500">水温低于此值时自动启动加热</span>
             </div>
 
-            <div className="form-item">
-              <label>目标恒温 (Target Temp)</label>
-              <div className="input-group">
+            {/* Target Temp */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-700 block">
+                目标恒温 (Target Temp)
+              </label>
+              <div className="flex rounded-lg shadow-xs">
                 <input
                   type="number"
                   step="0.5"
                   value={tempTarget}
                   onChange={(e) => setTempTarget(Number(e.target.value))}
+                  className="w-full bg-white rounded-l-lg border border-gray-300 px-3 py-1.5 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 font-mono"
                 />
-                <span className="input-unit">°C</span>
+                <span className="bg-slate-50 border border-l-0 border-gray-300 px-3 py-1.5 text-gray-500 text-xs font-medium rounded-r-lg flex items-center">
+                  °C
+                </span>
               </div>
-              <span className="input-tip">水温达到此值时自动关闭加热</span>
+              <span className="text-[11px] text-gray-500">水温到达此值时自动关闭加热</span>
             </div>
 
-            <div className="form-item">
-              <label>超温保护上限 (Max Temp)</label>
-              <div className="input-group">
+            {/* Max Temp */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-700 block">
+                超温保护上限 (Max Temp)
+              </label>
+              <div className="flex rounded-lg shadow-xs">
                 <input
                   type="number"
                   step="0.5"
                   value={tempMax}
                   onChange={(e) => setTempMax(Number(e.target.value))}
+                  className="w-full bg-white rounded-l-lg border border-gray-300 px-3 py-1.5 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 font-mono"
                 />
-                <span className="input-unit">°C</span>
+                <span className="bg-slate-50 border border-l-0 border-gray-300 px-3 py-1.5 text-gray-500 text-xs font-medium rounded-r-lg flex items-center">
+                  °C
+                </span>
               </div>
-              <span className="input-tip">超温时强制关闭加热并报警</span>
+              <span className="text-[11px] text-gray-500">超温时强制关闭加热并报警</span>
             </div>
 
-            <div className="form-item">
-              <label>超压停泵阈值 (Max Pressure)</label>
-              <div className="input-group">
+            {/* Max Pressure */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-700 block">
+                超压停泵阈值 (Max Pressure)
+              </label>
+              <div className="flex rounded-lg shadow-xs">
                 <input
                   type="number"
                   step="0.05"
                   value={pressMax}
                   onChange={(e) => setPressMax(Number(e.target.value))}
+                  className="w-full bg-white rounded-l-lg border border-gray-300 px-3 py-1.5 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 font-mono"
                 />
-                <span className="input-unit">MPa</span>
+                <span className="bg-slate-50 border border-l-0 border-gray-300 px-3 py-1.5 text-gray-500 text-xs font-medium rounded-r-lg flex items-center">
+                  MPa
+                </span>
               </div>
-              <span className="input-tip">压力超标时停泵保护管道</span>
+              <span className="text-[11px] text-gray-500">压力超标时停泵保护管道</span>
             </div>
 
-            <div className="form-item">
-              <label>最小流量防干烧 (Min Flow)</label>
-              <div className="input-group">
+            {/* Min Flow */}
+            <div className="space-y-1 sm:col-span-2">
+              <label className="text-xs font-medium text-gray-700 block">
+                最小流量防干烧 (Min Flow)
+              </label>
+              <div className="flex rounded-lg shadow-xs">
                 <input
                   type="number"
                   step="0.5"
                   value={flowMin}
                   onChange={(e) => setFlowMin(Number(e.target.value))}
+                  className="w-full bg-white rounded-l-lg border border-gray-300 px-3 py-1.5 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 font-mono"
                 />
-                <span className="input-unit">L/min</span>
+                <span className="bg-slate-50 border border-l-0 border-gray-300 px-3 py-1.5 text-gray-500 text-xs font-medium rounded-r-lg flex items-center">
+                  L/min
+                </span>
               </div>
-              <span className="input-tip">流量过低时切断加热防干烧</span>
+              <span className="text-[11px] text-gray-500">循环流量过低时强制切断加热防干烧</span>
             </div>
           </div>
 
-          <div className="form-footer">
-            <button type="submit" className="btn-save-thresholds">
-              <Save size={16} />
+          <div className="flex justify-end pt-2">
+            <button
+              type="submit"
+              className="inline-flex items-center gap-2 px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs shadow-sm hover:shadow-md active:scale-[0.98] transition-all duration-200 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-pointer"
+            >
+              <Save className="w-3.5 h-3.5" />
               <span>保存阈值规则</span>
             </button>
           </div>

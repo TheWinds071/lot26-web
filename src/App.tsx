@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import './App.css';
 import { AlarmLogs } from './components/AlarmLogs';
 import { ControlPanel } from './components/ControlPanel';
 import { Header } from './components/Header';
@@ -17,7 +16,11 @@ export const App: React.FC = () => {
 
   // Connect WebSocket
   const connectWebSocket = () => {
-    if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
+    if (
+      wsRef.current &&
+      (wsRef.current.readyState === WebSocket.OPEN ||
+        wsRef.current.readyState === WebSocket.CONNECTING)
+    ) {
       return;
     }
 
@@ -48,9 +51,9 @@ export const App: React.FC = () => {
             setStatus(updatedStatus);
             setHistory((prev) => [...prev.slice(-120), newTelemetry]);
           } else if (payload.type === 'device_state_updated') {
-            setStatus((prev) => prev ? { ...prev, device_state: payload.data } : null);
+            setStatus((prev) => (prev ? { ...prev, device_state: payload.data } : null));
           } else if (payload.type === 'thresholds_updated') {
-            setStatus((prev) => prev ? { ...prev, thresholds: payload.data } : null);
+            setStatus((prev) => (prev ? { ...prev, thresholds: payload.data } : null));
           } else if (payload.type === 'alarm') {
             const newAlarm: AlarmEvent = payload.data;
             setStatus((prev) => {
@@ -93,7 +96,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // Initial REST fetch & periodic health polling fallback
+  // Initial REST fetch & periodic fallback
   const fetchStatus = async () => {
     try {
       const res = await fetch('/api/status');
@@ -128,7 +131,6 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // Send action via WebSocket or REST
   const sendWsMessage = (msg: object) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(msg));
@@ -208,22 +210,22 @@ export const App: React.FC = () => {
   const handleClearAlarms = async () => {
     try {
       await fetch('/api/alarms', { method: 'DELETE' });
-      setStatus((prev) => prev ? { ...prev, active_alarms: [] } : null);
+      setStatus((prev) => (prev ? { ...prev, active_alarms: [] } : null));
     } catch (e) {
       console.error(e);
     }
   };
 
   return (
-    <div className="app-container">
-      {/* 1. Header with System Status & Emergency Action */}
-      <Header
-        status={status}
-        wsConnected={wsConnected}
-        onEmergencyStop={handleEmergencyStop}
-      />
+    <div className="min-h-screen bg-slate-50 text-gray-900 antialiased">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        {/* 1. Header with System Overview & Quick Controls */}
+        <Header
+          status={status}
+          wsConnected={wsConnected}
+          onEmergencyStop={handleEmergencyStop}
+        />
 
-      <main className="dashboard-content">
         {/* 2. Real-time Telemetry Metrics Cards */}
         <TelemetryCards
           telemetry={status?.telemetry}
@@ -255,7 +257,12 @@ export const App: React.FC = () => {
           alarms={status?.active_alarms || []}
           onClearAlarms={handleClearAlarms}
         />
-      </main>
+
+        {/* Footer */}
+        <footer className="text-center text-xs text-gray-400 py-4 border-t border-gray-200">
+          Smart Water Circulation Monitoring & Auto-Control System &bull; Enterprise SCADA Edition
+        </footer>
+      </div>
     </div>
   );
 };

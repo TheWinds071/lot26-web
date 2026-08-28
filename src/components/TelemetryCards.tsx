@@ -26,35 +26,35 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
 
   // Temperature Status
   let tempStatusText = "正常恒温";
-  let tempStatusClass = "status-tag-green";
+  let tempStatusClass = "bg-emerald-50 text-emerald-700 border-emerald-200";
   if (temp < tempMin) {
     tempStatusText = "水温偏低 (加热中)";
-    tempStatusClass = "status-tag-blue";
+    tempStatusClass = "bg-blue-50 text-blue-700 border-blue-200";
   } else if (temp > tempMax) {
     tempStatusText = "超温告警";
-    tempStatusClass = "status-tag-red";
+    tempStatusClass = "bg-rose-50 text-rose-700 border-rose-200";
   }
 
   // Pressure Status
   let pressStatusText = "压力平稳";
-  let pressStatusClass = "status-tag-green";
+  let pressStatusClass = "bg-emerald-50 text-emerald-700 border-emerald-200";
   if (press >= pressMax) {
     pressStatusText = "超压危险";
-    pressStatusClass = "status-tag-red";
+    pressStatusClass = "bg-rose-50 text-rose-700 border-rose-200";
   } else if (press < 0.1) {
     pressStatusText = "低压/待机";
-    pressStatusClass = "status-tag-yellow";
+    pressStatusClass = "bg-amber-50 text-amber-700 border-amber-200";
   }
 
   // Flow Status
   let flowStatusText = "循环畅通";
-  let flowStatusClass = "status-tag-green";
+  let flowStatusClass = "bg-emerald-50 text-emerald-700 border-emerald-200";
   if (deviceState?.pump_active && flow < flowMin) {
     flowStatusText = "流量过低 (防干烧)";
-    flowStatusClass = "status-tag-red";
+    flowStatusClass = "bg-rose-50 text-rose-700 border-rose-200";
   } else if (!deviceState?.pump_active) {
     flowStatusText = "水泵停机";
-    flowStatusClass = "status-tag-yellow";
+    flowStatusClass = "bg-slate-100 text-slate-700 border-slate-200";
   }
 
   const tempPercentage = Math.min(100, Math.max(0, (temp / 100) * 100));
@@ -62,137 +62,171 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
   const flowPercentage = Math.min(100, Math.max(0, (flow / 40.0) * 100));
 
   return (
-    <div className="telemetry-grid">
-      {/* Water Temperature Card */}
-      <div className="telemetry-card card-temp">
-        <div className="card-top">
-          <div className="card-icon-box icon-temp">
-            <Thermometer size={24} />
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
+      {/* 1. Water Temperature Card */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex flex-col justify-between transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <div className="w-10 h-10 rounded-lg bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center shadow-xs">
+              <Thermometer className="w-5 h-5" />
+            </div>
+            <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${tempStatusClass}`}>
+              {tempStatusText}
+            </span>
           </div>
-          <span className={`status-tag ${tempStatusClass}`}>{tempStatusText}</span>
-        </div>
-        <div className="card-body">
-          <span className="card-label">管道水温 (Water Temp)</span>
-          <div className="card-value-group">
-            <span className="card-value">{temp.toFixed(1)}</span>
-            <span className="card-unit">°C</span>
+          <span className="text-xs font-medium text-gray-500 block">管道水温 (Water Temp)</span>
+          <div className="flex items-baseline gap-1.5 mt-1 mb-3">
+            <span className="text-3xl font-bold tracking-tight text-gray-900 font-mono">
+              {temp.toFixed(1)}
+            </span>
+            <span className="text-sm font-medium text-gray-500">°C</span>
           </div>
         </div>
-        <div className="card-footer">
-          <div className="progress-bar-bg">
+
+        <div>
+          <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden mb-2">
             <div
-              className="progress-bar-fill fill-temp"
+              className="h-full bg-amber-500 rounded-full transition-all duration-200"
               style={{ width: `${tempPercentage}%` }}
             ></div>
           </div>
-          <div className="card-meta">
+          <div className="flex justify-between text-xs text-gray-500 font-normal">
             <span>目标: {tempTarget}°C</span>
-            <span>区间: {tempMin} ~ {tempMax}°C</span>
+            <span>安全区间: {tempMin} ~ {tempMax}°C</span>
           </div>
         </div>
       </div>
 
-      {/* Pipe Pressure Card */}
-      <div className="telemetry-card card-pressure">
-        <div className="card-top">
-          <div className="card-icon-box icon-pressure">
-            <Gauge size={24} />
+      {/* 2. Pipe Pressure Card */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex flex-col justify-between transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 border border-blue-200 flex items-center justify-center shadow-xs">
+              <Gauge className="w-5 h-5" />
+            </div>
+            <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${pressStatusClass}`}>
+              {pressStatusText}
+            </span>
           </div>
-          <span className={`status-tag ${pressStatusClass}`}>{pressStatusText}</span>
-        </div>
-        <div className="card-body">
-          <span className="card-label">管道压力 (Pipe Pressure)</span>
-          <div className="card-value-group">
-            <span className="card-value">{press.toFixed(2)}</span>
-            <span className="card-unit">MPa</span>
+          <span className="text-xs font-medium text-gray-500 block">管道压力 (Pipe Pressure)</span>
+          <div className="flex items-baseline gap-1.5 mt-1 mb-3">
+            <span className="text-3xl font-bold tracking-tight text-gray-900 font-mono">
+              {press.toFixed(2)}
+            </span>
+            <span className="text-sm font-medium text-gray-500">MPa</span>
           </div>
         </div>
-        <div className="card-footer">
-          <div className="progress-bar-bg">
+
+        <div>
+          <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden mb-2">
             <div
-              className={`progress-bar-fill ${press >= pressMax ? 'fill-danger' : 'fill-pressure'}`}
+              className={`h-full rounded-full transition-all duration-200 ${
+                press >= pressMax ? 'bg-rose-600' : 'bg-blue-600'
+              }`}
               style={{ width: `${pressPercentage}%` }}
             ></div>
           </div>
-          <div className="card-meta">
-            <span>安全上限: {pressMax.toFixed(2)} MPa</span>
+          <div className="flex justify-between text-xs text-gray-500 font-normal">
+            <span>上限: {pressMax.toFixed(2)} MPa</span>
             <span>约 {(press * 10).toFixed(1)} bar</span>
           </div>
         </div>
       </div>
 
-      {/* Pipe Flow Rate Card */}
-      <div className="telemetry-card card-flow">
-        <div className="card-top">
-          <div className="card-icon-box icon-flow">
-            <Waves size={24} />
+      {/* 3. Pipe Flow Rate Card */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex flex-col justify-between transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center shadow-xs">
+              <Waves className="w-5 h-5" />
+            </div>
+            <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${flowStatusClass}`}>
+              {flowStatusText}
+            </span>
           </div>
-          <span className={`status-tag ${flowStatusClass}`}>{flowStatusText}</span>
-        </div>
-        <div className="card-body">
-          <span className="card-label">循环流量 (Flow Rate)</span>
-          <div className="card-value-group">
-            <span className="card-value">{flow.toFixed(1)}</span>
-            <span className="card-unit">L/min</span>
+          <span className="text-xs font-medium text-gray-500 block">循环流量 (Flow Rate)</span>
+          <div className="flex items-baseline gap-1.5 mt-1 mb-3">
+            <span className="text-3xl font-bold tracking-tight text-gray-900 font-mono">
+              {flow.toFixed(1)}
+            </span>
+            <span className="text-sm font-medium text-gray-500">L/min</span>
           </div>
         </div>
-        <div className="card-footer">
-          <div className="progress-bar-bg">
+
+        <div>
+          <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden mb-2">
             <div
-              className="progress-bar-fill fill-flow"
+              className="h-full bg-emerald-500 rounded-full transition-all duration-200"
               style={{ width: `${flowPercentage}%` }}
             ></div>
           </div>
-          <div className="card-meta">
-            <span>下限保护: {flowMin.toFixed(1)} L/min</span>
-            <span>流速系数: {(flow / 25).toFixed(2)}x</span>
+          <div className="flex justify-between text-xs text-gray-500 font-normal">
+            <span>保护下限: {flowMin.toFixed(1)} L/min</span>
+            <span>流速比: {(flow / 25).toFixed(2)}x</span>
           </div>
         </div>
       </div>
 
-      {/* Actuators Summary Card */}
-      <div className="telemetry-card card-actuator">
-        <div className="card-top">
-          <div className="card-icon-box icon-actuator">
-            <Zap size={24} />
-          </div>
-          <span className="status-tag status-tag-purple">执行机构</span>
-        </div>
-        <div className="card-actuator-body">
-          {/* Pump Status Item */}
-          <div className="actuator-item">
-            <div className="actuator-info">
-              <RotateCw
-                size={18}
-                className={`actuator-spin ${deviceState?.pump_active ? 'spinning' : ''}`}
-              />
-              <span className="actuator-title">循环水泵</span>
+      {/* 4. Actuators State Card */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex flex-col justify-between transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <div className="w-10 h-10 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-200 flex items-center justify-center shadow-xs">
+              <Zap className="w-5 h-5" />
             </div>
-            <div className="actuator-state">
-              <span className={`state-badge ${deviceState?.pump_active ? 'badge-on' : 'badge-off'}`}>
+            <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+              执行机构状态
+            </span>
+          </div>
+
+          <div className="space-y-2 mb-3">
+            {/* Pump */}
+            <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
+              <div className="flex items-center gap-2 text-xs font-medium text-gray-700">
+                <RotateCw
+                  className={`w-3.5 h-3.5 ${
+                    deviceState?.pump_active ? 'animate-spin text-blue-600' : 'text-gray-400'
+                  }`}
+                />
+                <span>循环水泵</span>
+              </div>
+              <span
+                className={`text-[11px] font-medium px-2 py-0.5 rounded ${
+                  deviceState?.pump_active
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    : 'bg-slate-200 text-slate-600'
+                }`}
+              >
                 {deviceState?.pump_active ? `运行中 (${deviceState.pump_speed}%)` : '已停止'}
               </span>
             </div>
-          </div>
 
-          {/* Heater Status Item */}
-          <div className="actuator-item">
-            <div className="actuator-info">
-              <Flame
-                size={18}
-                className={deviceState?.heater_active ? 'glowing-fire' : ''}
-              />
-              <span className="actuator-title">加热模块</span>
-            </div>
-            <div className="actuator-state">
-              <span className={`state-badge ${deviceState?.heater_active ? 'badge-heating' : 'badge-off'}`}>
+            {/* Heater */}
+            <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
+              <div className="flex items-center gap-2 text-xs font-medium text-gray-700">
+                <Flame
+                  className={`w-3.5 h-3.5 ${
+                    deviceState?.heater_active ? 'text-amber-500 animate-pulse' : 'text-gray-400'
+                  }`}
+                />
+                <span>加热模块</span>
+              </div>
+              <span
+                className={`text-[11px] font-medium px-2 py-0.5 rounded ${
+                  deviceState?.heater_active
+                    ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                    : 'bg-slate-200 text-slate-600'
+                }`}
+              >
                 {deviceState?.heater_active ? `加热中 (${deviceState.heater_power}%)` : '待机'}
               </span>
             </div>
           </div>
         </div>
-        <div className="card-meta" style={{ marginTop: 'auto', paddingTop: '10px' }}>
-          <span>自控响应: 自动恒温与超压联锁</span>
+
+        <div className="text-xs text-gray-500 font-normal pt-1 border-t border-gray-100 flex items-center justify-between">
+          <span>温控联锁</span>
+          <span className="text-blue-600 font-medium">闭环保护已就绪</span>
         </div>
       </div>
     </div>

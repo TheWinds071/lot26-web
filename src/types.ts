@@ -13,6 +13,7 @@ export interface TelemetryData {
 export interface DeviceState {
   auto_mode: boolean;
   pump_active: boolean;
+  pump_direction: 'FORWARD' | 'REVERSE';
   pump_speed: number;
   heater_active: boolean;
   heater_power: number;

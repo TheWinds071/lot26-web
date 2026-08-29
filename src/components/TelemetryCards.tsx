@@ -27,6 +27,9 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
   const pressMax = thresholds?.pressure_max ?? 0.8;
   const flowMin = thresholds?.flow_rate_min ?? 5.0;
 
+  const pumpDirection = deviceState?.pump_direction ?? 'FORWARD';
+  const isPumpActive = deviceState?.pump_active ?? false;
+
   // Temperature Status for Tank 1
   let t1StatusText = "正常恒温";
   let t1StatusClass = "bg-emerald-50 text-emerald-700 border-emerald-200";
@@ -61,14 +64,18 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
   }
 
   // Flow Status
-  let flowStatusText = "循环畅通";
-  let flowStatusClass = "bg-emerald-50 text-emerald-700 border-emerald-200";
-  if (deviceState?.pump_active && flow < flowMin) {
+  let flowStatusText = isPumpActive
+    ? pumpDirection === 'FORWARD'
+      ? "正向输送 1➔2"
+      : "反向输送 2➔1"
+    : "水泵停机";
+  let flowStatusClass = isPumpActive
+    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+    : "bg-slate-100 text-slate-700 border-slate-200";
+
+  if (isPumpActive && flow < flowMin) {
     flowStatusText = "流量过低 (防干烧)";
     flowStatusClass = "bg-rose-50 text-rose-700 border-rose-200";
-  } else if (!deviceState?.pump_active) {
-    flowStatusText = "水泵停机";
-    flowStatusClass = "bg-slate-100 text-slate-700 border-slate-200";
   }
 
   const t1Percentage = Math.min(100, Math.max(0, (t1 / 100) * 100));
@@ -148,7 +155,7 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
         </div>
       </div>
 
-      {/* 3. Pipe Pressure Card */}
+      {/* 3. Single Pipe Pressure Card */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex flex-col justify-between transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
         <div>
           <div className="flex items-center justify-between mb-3">
@@ -159,7 +166,7 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
               {pressStatusText}
             </span>
           </div>
-          <span className="text-xs font-medium text-gray-500 block">槽间管道压力 (Pressure)</span>
+          <span className="text-xs font-medium text-gray-500 block">单管路压力 (Pipe Pressure)</span>
           <div className="flex items-baseline gap-1.5 mt-1 mb-3">
             <span className="text-3xl font-bold tracking-tight text-gray-900 font-mono">
               {press.toFixed(2)}
@@ -184,7 +191,7 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
         </div>
       </div>
 
-      {/* 4. Flow Rate & Actuators Card */}
+      {/* 4. Single Pipe Flow Rate Card */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex flex-col justify-between transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
         <div>
           <div className="flex items-center justify-between mb-3">
@@ -195,7 +202,7 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
               {flowStatusText}
             </span>
           </div>
-          <span className="text-xs font-medium text-gray-500 block">水槽间循环流量 (Flow Rate)</span>
+          <span className="text-xs font-medium text-gray-500 block">管道双向流量 (Flow Rate)</span>
           <div className="flex items-baseline gap-1.5 mt-1 mb-2">
             <span className="text-3xl font-bold tracking-tight text-gray-900 font-mono">
               {flow.toFixed(1)}
@@ -213,8 +220,8 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
           </div>
           <div className="flex items-center justify-between text-[11px] text-gray-600 pt-1 border-t border-gray-100">
             <div className="flex items-center gap-1">
-              <RotateCw className={`w-3 h-3 ${deviceState?.pump_active ? 'text-blue-600 animate-spin' : 'text-gray-400'}`} />
-              <span>水泵 {deviceState?.pump_active ? `${deviceState.pump_speed}%` : '停止'}</span>
+              <RotateCw className={`w-3 h-3 ${isPumpActive ? 'text-blue-600 animate-spin' : 'text-gray-400'}`} />
+              <span>水泵 {isPumpActive ? `${pumpDirection === 'FORWARD' ? '正转' : '反转'} ${deviceState?.pump_speed}%` : '停止'}</span>
             </div>
             <div className="flex items-center gap-1">
               <Flame className={`w-3 h-3 ${deviceState?.heater_active ? 'text-amber-500 animate-pulse' : 'text-gray-400'}`} />

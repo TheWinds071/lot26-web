@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AlarmLogs } from './components/AlarmLogs';
-import { ControlPanel } from './components/ControlPanel';
 import { Header } from './components/Header';
+import { TelemetryCards } from './components/TelemetryCards';
 import { PipelineTopology } from './components/PipelineTopology';
 import { RealtimeCharts } from './components/RealtimeCharts';
-import { TelemetryCards } from './components/TelemetryCards';
-import type { AlarmEvent, SystemStatus, TelemetryData, ThresholdConfig } from './types';
+import { ControlPanel } from './components/ControlPanel';
+import { AlarmLogs } from './components/AlarmLogs';
+import type { SystemStatus, TelemetryData, ThresholdConfig } from './types';
 
 export const App: React.FC = () => {
   const [status, setStatus] = useState<SystemStatus | null>(null);
@@ -14,18 +14,11 @@ export const App: React.FC = () => {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
 
-  // Connect WebSocket
+  // Connect to backend WebSocket
   const connectWebSocket = () => {
-    if (
-      wsRef.current &&
-      (wsRef.current.readyState === WebSocket.OPEN ||
-        wsRef.current.readyState === WebSocket.CONNECTING)
-    ) {
-      return;
-    }
-
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/telemetry`;
+    const host = window.location.host;
+    const wsUrl = `${protocol}//${host}/ws/telemetry`;
 
     try {
       const ws = new WebSocket(wsUrl);
@@ -44,18 +37,23 @@ export const App: React.FC = () => {
           const payload = JSON.parse(event.data);
           if (payload.type === 'init') {
             setStatus(payload.status);
-            setHistory(payload.history || []);
+            if (payload.history) {
+              setHistory(payload.history);
+            }
           } else if (payload.type === 'telemetry') {
-            const newTelemetry: TelemetryData = payload.data.telemetry;
-            const updatedStatus: SystemStatus = payload.data.status;
-            setStatus(updatedStatus);
-            setHistory((prev) => [...prev.slice(-120), newTelemetry]);
+            const telemetry: TelemetryData = payload.data.telemetry;
+            setStatus(payload.data.status);
+            setHistory((prev) => [...prev.slice(-120), telemetry]);
           } else if (payload.type === 'device_state_updated') {
-            setStatus((prev) => (prev ? { ...prev, device_state: payload.data } : null));
+            setStatus((prev) =>
+              prev ? { ...prev, device_state: payload.data } : null
+            );
           } else if (payload.type === 'thresholds_updated') {
-            setStatus((prev) => (prev ? { ...prev, thresholds: payload.data } : null));
+            setStatus((prev) =>
+              prev ? { ...prev, thresholds: payload.data } : null
+            );
           } else if (payload.type === 'alarm') {
-            const newAlarm: AlarmEvent = payload.data;
+            const newAlarm = payload.data;
             setStatus((prev) => {
               if (!prev) return null;
               const filtered = prev.active_alarms.filter((a) => a.id !== newAlarm.id);
@@ -151,13 +149,17 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleControlPump = async (active: boolean, speed?: number) => {
-    sendWsMessage({ action: 'set_pump', active, speed });
+  const handleControlPump = async (
+    active: boolean,
+    speed?: number,
+    direction?: 'FORWARD' | 'REVERSE'
+  ) => {
+    sendWsMessage({ action: 'set_pump', active, speed, direction });
     try {
       await fetch('/api/control/pump', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ active, speed }),
+        body: JSON.stringify({ active, speed, direction }),
       });
       fetchStatus();
     } catch (e) {
@@ -217,32 +219,32 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-gray-900 antialiased">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        {/* 1. Header with System Overview & Quick Controls */}
+    <div className="min-h-screen bg-slate-50 text-gray-900 flex flex-col font-sans selection:bg-blue-100 selection:text-blue-700">
+      <div className="max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6 flex-1">
+        {/* 1. System Header with Live Badges and Emergency Stop */}
         <Header
           status={status}
           wsConnected={wsConnected}
           onEmergencyStop={handleEmergencyStop}
         />
 
-        {/* 2. Real-time Telemetry Metrics Cards */}
+        {/* 2. Key Telemetry Metric Cards */}
         <TelemetryCards
           telemetry={status?.telemetry}
           deviceState={status?.device_state}
           thresholds={status?.thresholds}
         />
 
-        {/* 3. Visual SVG Pipeline Topology Schematic */}
+        {/* 3. Single-Pipe Bidirectional Digital Twin Topology */}
         <PipelineTopology
           telemetry={status?.telemetry}
           deviceState={status?.device_state}
         />
 
-        {/* 4. Real-time Waveform Dynamic Trends */}
+        {/* 4. Real-time Multi-Channel Trend Curves */}
         <RealtimeCharts history={history} />
 
-        {/* 5. Control Center & Threshold Settings */}
+        {/* 5. Actuator Overrides & Closed-Loop Threshold Configuration */}
         <ControlPanel
           deviceState={status?.device_state}
           thresholds={status?.thresholds}
@@ -252,15 +254,17 @@ export const App: React.FC = () => {
           onUpdateThresholds={handleUpdateThresholds}
         />
 
-        {/* 6. Alarm & Event Logs */}
+        {/* 6. Active Alarms & Audit Log Table */}
         <AlarmLogs
           alarms={status?.active_alarms || []}
           onClearAlarms={handleClearAlarms}
         />
 
         {/* Footer */}
-        <footer className="text-center text-xs text-gray-400 py-4 border-t border-gray-200">
-          Smart Water Circulation Monitoring & Auto-Control System &bull; Enterprise SCADA Edition
+        <footer className="text-center py-4 text-xs text-gray-500 border-t border-gray-200">
+          <p>
+            单管路双水槽智能水循环控制系统 · Single-Pipe Bidirectional SCADA System · TCP Ingestion (Port 8888)
+          </p>
         </footer>
       </div>
     </div>

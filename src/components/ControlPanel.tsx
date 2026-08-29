@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Check, Flame, Power, RotateCw, Save, Settings, Sliders, ToggleLeft, ToggleRight } from 'lucide-react';
+import { ArrowLeftRight, Check, Flame, Power, RotateCw, Save, Settings, Sliders, ToggleLeft, ToggleRight } from 'lucide-react';
 import type { DeviceState, ThresholdConfig } from '../types';
 
 interface ControlPanelProps {
   deviceState?: DeviceState;
   thresholds?: ThresholdConfig;
   onSetMode: (autoMode: boolean) => void;
-  onControlPump: (active: boolean, speed?: number) => void;
+  onControlPump: (active: boolean, speed?: number, direction?: 'FORWARD' | 'REVERSE') => void;
   onControlHeater: (active: boolean, power?: number) => void;
   onUpdateThresholds: (config: ThresholdConfig) => void;
 }
@@ -23,6 +23,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const isEmergency = deviceState?.emergency_stop ?? false;
   const isPumpActive = deviceState?.pump_active ?? false;
   const pumpSpeed = deviceState?.pump_speed ?? 60;
+  const pumpDirection = deviceState?.pump_direction ?? 'FORWARD';
   const isHeaterActive = deviceState?.heater_active ?? false;
   const heaterPower = deviceState?.heater_power ?? 0;
 
@@ -73,10 +74,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             </div>
             <div>
               <h3 className="text-base font-semibold tracking-tight text-gray-900">
-                水槽循环执行器控制
+                单管路水泵与加热控制
               </h3>
               <p className="text-xs text-gray-500 font-normal">
-                Inter-tank Circulation Pump & Heater Controls
+                Bidirectional Pump (Forward/Reverse) & Heater Controls
               </p>
             </div>
           </div>
@@ -115,7 +116,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     isPumpActive ? 'text-blue-600 animate-spin' : 'text-gray-400'
                   }`}
                 />
-                <span className="text-sm font-semibold text-gray-800">槽间循环水泵</span>
+                <span className="text-sm font-semibold text-gray-800">单管路双向水泵</span>
               </div>
               <button
                 disabled={isEmergency}
@@ -124,16 +125,56 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     ? 'bg-blue-600 hover:bg-blue-700 text-white'
                     : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
                 }`}
-                onClick={() => onControlPump(!isPumpActive, pumpSpeed)}
+                onClick={() => onControlPump(!isPumpActive, pumpSpeed, pumpDirection)}
               >
                 <Power className="w-3.5 h-3.5" />
                 <span>{isPumpActive ? '运行中' : '已停止'}</span>
               </button>
             </div>
 
+            {/* Direction Selection (Forward: 1 -> 2, Reverse: 2 -> 1) */}
+            <div className="mb-3 space-y-1.5">
+              <div className="flex justify-between items-center text-xs text-gray-600">
+                <span className="flex items-center gap-1">
+                  <ArrowLeftRight className="w-3 h-3 text-blue-600" />
+                  <span>水流输送方向 (水泵正反转)</span>
+                </span>
+                <span className="font-semibold text-blue-700">
+                  {pumpDirection === 'FORWARD' ? '水槽1 ➔ 水槽2 (正转)' : '水槽2 ➔ 水槽1 (反转)'}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  disabled={isEmergency}
+                  onClick={() => onControlPump(isPumpActive, pumpSpeed, 'FORWARD')}
+                  className={`py-1.5 px-2 text-xs font-medium rounded-lg border transition-all duration-200 flex items-center justify-center gap-1.5 ${
+                    pumpDirection === 'FORWARD'
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  <span>正转: 水槽1 ➔ 2</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={isEmergency}
+                  onClick={() => onControlPump(isPumpActive, pumpSpeed, 'REVERSE')}
+                  className={`py-1.5 px-2 text-xs font-medium rounded-lg border transition-all duration-200 flex items-center justify-center gap-1.5 ${
+                    pumpDirection === 'REVERSE'
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  <span>反转: 水槽2 ➔ 1</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Speed Slider */}
             <div className="space-y-1.5">
               <div className="flex justify-between text-xs text-gray-600">
-                <span>水泵转速/输送流量设定</span>
+                <span>水泵转速设定</span>
                 <span className="font-mono font-bold text-gray-900">{pumpSpeed}%</span>
               </div>
               <input
@@ -143,7 +184,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 step="5"
                 value={pumpSpeed}
                 disabled={isEmergency}
-                onChange={(e) => onControlPump(isPumpActive, Number(e.target.value))}
+                onChange={(e) => onControlPump(isPumpActive, Number(e.target.value), pumpDirection)}
                 className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600 disabled:opacity-50"
               />
             </div>
@@ -158,7 +199,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     isHeaterActive ? 'text-amber-500 animate-pulse' : 'text-gray-400'
                   }`}
                 />
-                <span className="text-sm font-semibold text-gray-800">加热模块</span>
+                <span className="text-sm font-semibold text-gray-800">水槽1加热模块</span>
               </div>
               <button
                 disabled={isEmergency}
@@ -197,7 +238,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
         {isAuto && (
           <div className="mt-4 p-3 rounded-lg bg-blue-50/70 border border-blue-100 text-blue-900 text-xs leading-relaxed">
-            💡 <strong>智能自控模式生效中</strong>：系统实时根据双水槽水温、管道压力与循环流量闭环调控水泵与加热器，超压、超温或干烧时毫秒级联锁停机。
+            💡 <strong>智能自控模式生效中</strong>：单管路系统根据双水槽水温与温差闭环控制水泵正反转及加热，超压（&ge;0.80 MPa）或低流量（&lt;5.0 L/min）时自动切断保护。
           </div>
         )}
       </div>
@@ -214,7 +255,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 自控规则与安全阈值设定
               </h3>
               <p className="text-xs text-gray-500 font-normal">
-                Dual-Tank Control Setpoints & Safety Interlocks
+                Single-Pipe Dual-Tank Setpoints & Safety Interlocks
               </p>
             </div>
           </div>
@@ -311,7 +352,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             {/* Max Pressure */}
             <div className="space-y-1">
               <label className="text-xs font-medium text-gray-700 block">
-                超压停泵阈值 (Max Pressure)
+                单管超压停泵阈值 (Max Pressure)
               </label>
               <div className="flex rounded-lg shadow-xs">
                 <input
@@ -345,7 +386,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   L/min
                 </span>
               </div>
-              <span className="text-[11px] text-gray-500">水泵循环流量过低时切断加热</span>
+              <span className="text-[11px] text-gray-500">水泵输送流量过低时切断加热</span>
             </div>
           </div>
 

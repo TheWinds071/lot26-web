@@ -14,14 +14,10 @@ export const Header: React.FC<HeaderProps> = ({ status, wsConnected, onEmergency
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
-      setTime(
-        now.toLocaleTimeString('zh-CN', { hour12: false }) +
-          '.' +
-          String(Math.floor(now.getMilliseconds() / 100)).padStart(1, '0')
-      );
+      setTime(now.toLocaleTimeString('zh-CN', { hour12: false }));
     };
     updateTime();
-    const interval = setInterval(updateTime, 200);
+    const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -40,14 +36,14 @@ export const Header: React.FC<HeaderProps> = ({ status, wsConnected, onEmergency
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-semibold tracking-tight text-gray-900">
-              双水槽智能水循环监测与控制系统
+              单管路双水槽智能水循环监测系统
             </h1>
             <span className="hidden sm:inline-flex px-2 py-0.5 rounded text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
-              Dual-Tank SCADA
+              SCADA v1.0
             </span>
           </div>
           <p className="text-xs text-gray-500 font-normal">
-            Dual-Tank Water Circulation, Inter-tank Transfer & Auto-Control System
+            Single-Pipe Dual-Tank Water Circulation, Bidirectional Transfer & Auto-Control System
           </p>
         </div>
       </div>
@@ -98,7 +94,7 @@ export const Header: React.FC<HeaderProps> = ({ status, wsConnected, onEmergency
           </div>
         )}
 
-        {/* Real-time Clock */}
+        {/* Real-time Clock (HH:mm:ss without decimals) */}
         <div className="hidden lg:flex items-center px-3 py-1.5 rounded-lg bg-slate-50 border border-gray-200 text-xs font-mono text-gray-700">
           <span>{time}</span>
         </div>

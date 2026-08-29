@@ -15,6 +15,7 @@
 - [五、项目目录结构](#五项目目录结构)
 - [六、快速启动与操作指南](#六快速启动与操作指南)
 - [七、API 与 WebSocket 接口](#七api-与-websocket-接口)
+- [八、前端组件开发手册 (初学者指引)](#八前端组件开发手册-初学者指引)
 
 ---
 
@@ -169,6 +170,8 @@ lot26/
 │           ├── models.py           # 单管双槽数据模型与 Pydantic 校验
 │           ├── state_manager.py    # 状态管理与正反转闭环自控规则引擎
 │           └── tcp_server.py       # 异步 TCP 采集服务与下行指令响应
+├── docs/                           # 项目设计与开发文档
+│   └── COMPONENT_GUIDE.md          # 前端组件设计开发指南 (初学者手册)
 ├── src/                            # 前端 SCADA 可视化工程 (React + Vite + Tailwind)
 │   ├── types.ts                    # TypeScript 类型定义
 │   ├── App.tsx                     # 仪表盘主视图与状态调度
@@ -238,3 +241,15 @@ uv run python simulator.py --interval 1.0
 ### WebSocket 接口
 
 - `ws://localhost:8000/ws/telemetry`: 全双工实时数据流推送与远程控制通道。
+
+---
+
+## 八、前端组件开发手册 (初学者指引)
+
+如果您是前端初学者，或者希望为系统扩展新的监控仪表、控制组件或矢量图元，请参阅：
+👉 **[前端组件设计与开发指南 (docs/COMPONENT_GUIDE.md)](file:///home/TheWinds/Study/WebProject/lot26/docs/COMPONENT_GUIDE.md)**
+
+该文档包含：
+1. **添加新组件的标准 5 步流程**（定义类型 ➔ 编写组件 ➔ 主视图挂载 ➔ 状态绑定 ➔ 构建测试）；
+2. **5 套即插即用的工业 SCADA 常用组件模板**（遥测指标卡片、状态指示灯、滑块开关、SVG 矢量阀门、审计表格）；
+3. **Corporate Clean 设计规范与排坑指南**。

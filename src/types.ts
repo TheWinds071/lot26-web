@@ -1,8 +1,12 @@
 export interface TelemetryData {
   device_id: string;
+  temp_tank1: number;
+  temp_tank2: number;
   temperature: number;
   pressure: number;
   flow_rate: number;
+  water_level_tank1?: number;
+  water_level_tank2?: number;
   timestamp: string;
 }
 
@@ -20,6 +24,7 @@ export interface ThresholdConfig {
   temp_target: number;
   temp_min: number;
   temp_max: number;
+  temp_diff_max: number;
   pressure_min: number;
   pressure_max: number;
   flow_rate_min: number;

@@ -7,15 +7,15 @@ interface RealtimeChartsProps {
 }
 
 export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({ history }) => {
-  const [activeTab, setActiveTab] = useState<'all' | 'temp' | 'pressure' | 'flow'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 't1' | 't2' | 'pressure' | 'flow'>('all');
 
   const dataPoints = history.slice(-40);
   const width = 800;
   const height = 180;
   const padding = { top: 20, right: 30, bottom: 30, left: 45 };
 
-  const renderChart = (
-    key: 'temperature' | 'pressure' | 'flow_rate',
+  const renderSingleChart = (
+    key: 'temp_tank1' | 'temp_tank2' | 'pressure' | 'flow_rate',
     color: string,
     unit: string,
     title: string,
@@ -33,7 +33,7 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({ history }) => {
     const chartWidth = width - padding.left - padding.right;
     const chartHeight = height - padding.top - padding.bottom;
 
-    const values = dataPoints.map((d) => d[key]);
+    const values = dataPoints.map((d) => d[key] ?? d.temperature ?? 0);
     const actualMin = Math.min(...values, minVal);
     const actualMax = Math.max(...values, maxVal);
     const range = actualMax - actualMin || 1;
@@ -43,17 +43,17 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({ history }) => {
     const getY = (val: number) =>
       padding.top + chartHeight - ((val - actualMin) / range) * chartHeight;
 
-    const points = dataPoints.map((d, i) => `${getX(i)},${getY(d[key])}`).join(' ');
+    const points = dataPoints.map((d, i) => `${getX(i)},${getY(d[key] ?? d.temperature ?? 0)}`).join(' ');
 
     const areaPath = `
-      M ${getX(0)} ${getY(dataPoints[0][key])}
+      M ${getX(0)} ${getY(dataPoints[0][key] ?? dataPoints[0].temperature ?? 0)}
       L ${points}
       L ${getX(dataPoints.length - 1)} ${padding.top + chartHeight}
       L ${getX(0)} ${padding.top + chartHeight}
       Z
     `;
 
-    const latestVal = dataPoints[dataPoints.length - 1][key];
+    const latestVal = dataPoints[dataPoints.length - 1][key] ?? dataPoints[dataPoints.length - 1].temperature ?? 0;
 
     return (
       <div
@@ -141,6 +141,103 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({ history }) => {
     );
   };
 
+  // Dual temperature comparative chart
+  const renderDualTempChart = () => {
+    if (dataPoints.length === 0) return null;
+
+    const chartWidth = width - padding.left - padding.right;
+    const chartHeight = height - padding.top - padding.bottom;
+
+    const t1Vals = dataPoints.map((d) => d.temp_tank1 ?? d.temperature ?? 0);
+    const t2Vals = dataPoints.map((d) => d.temp_tank2 ?? d.temperature ?? 0);
+    const allVals = [...t1Vals, ...t2Vals];
+    const actualMin = Math.min(...allVals, 20);
+    const actualMax = Math.max(...allVals, 80);
+    const range = actualMax - actualMin || 1;
+
+    const getX = (index: number) =>
+      padding.left + (index / Math.max(1, dataPoints.length - 1)) * chartWidth;
+    const getY = (val: number) =>
+      padding.top + chartHeight - ((val - actualMin) / range) * chartHeight;
+
+    const points1 = dataPoints.map((d, i) => `${getX(i)},${getY(d.temp_tank1 ?? d.temperature ?? 0)}`).join(' ');
+    const points2 = dataPoints.map((d, i) => `${getX(i)},${getY(d.temp_tank2 ?? d.temperature ?? 0)}`).join(' ');
+
+    const latest1 = t1Vals[t1Vals.length - 1];
+    const latest2 = t2Vals[t2Vals.length - 1];
+
+    return (
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 transition-all duration-200">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-semibold text-gray-800">双水槽温度对比</span>
+            <span className="flex items-center gap-1 text-[11px] text-amber-700">
+              <span className="w-2 h-2 rounded-full bg-amber-500"></span> 水槽1: {latest1.toFixed(1)}°C
+            </span>
+            <span className="flex items-center gap-1 text-[11px] text-orange-700">
+              <span className="w-2 h-2 rounded-full bg-orange-500"></span> 水槽2: {latest2.toFixed(1)}°C
+            </span>
+          </div>
+          <div className="text-xs text-gray-500">
+            温差: {Math.abs(latest1 - latest2).toFixed(1)}°C
+          </div>
+        </div>
+
+        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto block">
+          {/* Grid lines */}
+          {[0, 0.25, 0.5, 0.75, 1].map((pct) => {
+            const y = padding.top + chartHeight * (1 - pct);
+            const val = actualMin + range * pct;
+            return (
+              <g key={pct}>
+                <line
+                  x1={padding.left}
+                  y1={y}
+                  x2={width - padding.right}
+                  y2={y}
+                  stroke="#e2e8f0"
+                  strokeDasharray="4 4"
+                  strokeWidth="1"
+                />
+                <text
+                  x={padding.left - 8}
+                  y={y + 4}
+                  fill="#94a3b8"
+                  fontSize="10"
+                  textAnchor="end"
+                >
+                  {val.toFixed(0)}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Line 1: Tank 1 */}
+          <polyline
+            fill="none"
+            stroke="#f59e0b"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            points={points1}
+          />
+          {/* Line 2: Tank 2 */}
+          <polyline
+            fill="none"
+            stroke="#ea580c"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeDasharray="6 3"
+            points={points2}
+          />
+
+          {/* End points */}
+          <circle cx={getX(dataPoints.length - 1)} cy={getY(latest1)} r="4" fill="#f59e0b" stroke="#ffffff" strokeWidth="2" />
+          <circle cx={getX(dataPoints.length - 1)} cy={getY(latest2)} r="4" fill="#ea580c" stroke="#ffffff" strokeWidth="2" />
+        </svg>
+      </div>
+    );
+  };
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 md:p-6 transition-all duration-200">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -153,13 +250,13 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({ history }) => {
               实时趋势监控
             </h3>
             <p className="text-xs text-gray-500 font-normal">
-              Continuous Telemetry Waveforms (40-Point Sliding Window)
+              Dual-Tank Temperature, Pipe Pressure & Flow Waveforms
             </p>
           </div>
         </div>
 
         {/* Tab switchers */}
-        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200">
+        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 flex-wrap">
           <button
             className={`px-3 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
               activeTab === 'all'
@@ -172,13 +269,23 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({ history }) => {
           </button>
           <button
             className={`px-3 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
-              activeTab === 'temp'
+              activeTab === 't1'
                 ? 'bg-white text-blue-600 shadow-xs'
                 : 'text-gray-600 hover:text-gray-900'
             }`}
-            onClick={() => setActiveTab('temp')}
+            onClick={() => setActiveTab('t1')}
           >
-            水温曲线
+            水槽1水温
+          </button>
+          <button
+            className={`px-3 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
+              activeTab === 't2'
+                ? 'bg-white text-blue-600 shadow-xs'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+            onClick={() => setActiveTab('t2')}
+          >
+            水槽2水温
           </button>
           <button
             className={`px-3 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
@@ -188,7 +295,7 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({ history }) => {
             }`}
             onClick={() => setActiveTab('pressure')}
           >
-            压力曲线
+            管道压力
           </button>
           <button
             className={`px-3 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
@@ -198,7 +305,7 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({ history }) => {
             }`}
             onClick={() => setActiveTab('flow')}
           >
-            流量曲线
+            循环流量
           </button>
         </div>
       </div>
@@ -210,14 +317,17 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({ history }) => {
             : 'grid-cols-1'
         }`}
       >
-        {(activeTab === 'all' || activeTab === 'temp') &&
-          renderChart('temperature', '#d97706', '°C', '水温趋势 (°C)', 20, 80)}
+        {activeTab === 'all' && renderDualTempChart()}
+        {activeTab === 't1' &&
+          renderSingleChart('temp_tank1', '#d97706', '°C', '水槽1水温趋势 (°C)', 20, 80)}
+        {activeTab === 't2' &&
+          renderSingleChart('temp_tank2', '#ea580c', '°C', '水槽2水温趋势 (°C)', 20, 80)}
 
         {(activeTab === 'all' || activeTab === 'pressure') &&
-          renderChart('pressure', '#0284c7', 'MPa', '压力趋势 (MPa)', 0.0, 0.8)}
+          renderSingleChart('pressure', '#0284c7', 'MPa', '管道压力趋势 (MPa)', 0.0, 0.8)}
 
         {(activeTab === 'all' || activeTab === 'flow') &&
-          renderChart('flow_rate', '#059669', 'L/min', '流量趋势 (L/min)', 0.0, 35)}
+          renderSingleChart('flow_rate', '#059669', 'L/min', '槽间循环流量趋势 (L/min)', 0.0, 35)}
       </div>
     </div>
   );

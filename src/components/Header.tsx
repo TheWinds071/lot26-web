@@ -40,14 +40,14 @@ export const Header: React.FC<HeaderProps> = ({ status, wsConnected, onEmergency
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-semibold tracking-tight text-gray-900">
-              智能水循环监测系统
+              双水槽智能水循环监测与控制系统
             </h1>
             <span className="hidden sm:inline-flex px-2 py-0.5 rounded text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
-              SCADA v1.0
+              Dual-Tank SCADA
             </span>
           </div>
           <p className="text-xs text-gray-500 font-normal">
-            Smart Water Circulation Monitoring & Auto-Control System
+            Dual-Tank Water Circulation, Inter-tank Transfer & Auto-Control System
           </p>
         </div>
       </div>
@@ -63,7 +63,7 @@ export const Header: React.FC<HeaderProps> = ({ status, wsConnected, onEmergency
           }`}
         >
           <Radio className="w-3.5 h-3.5" />
-          <span>TCP采集: {isTcpConnected ? '已连接' : '离线'}</span>
+          <span>TCP采集: {isTcpConnected ? '已连接' : '等待连接'}</span>
         </div>
 
         {/* WebSocket Push Status */}

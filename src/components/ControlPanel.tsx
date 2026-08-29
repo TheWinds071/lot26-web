@@ -30,6 +30,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const [tempMin, setTempMin] = useState<number>(45);
   const [tempTarget, setTempTarget] = useState<number>(55);
   const [tempMax, setTempMax] = useState<number>(75);
+  const [tempDiffMax, setTempDiffMax] = useState<number>(15);
   const [pressMax, setPressMax] = useState<number>(0.80);
   const [flowMin, setFlowMin] = useState<number>(5.0);
   const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
@@ -39,6 +40,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       setTempMin(thresholds.temp_min);
       setTempTarget(thresholds.temp_target);
       setTempMax(thresholds.temp_max);
+      setTempDiffMax(thresholds.temp_diff_max ?? 15);
       setPressMax(thresholds.pressure_max);
       setFlowMin(thresholds.flow_rate_min);
     }
@@ -50,6 +52,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       temp_min: Number(tempMin),
       temp_target: Number(tempTarget),
       temp_max: Number(tempMax),
+      temp_diff_max: Number(tempDiffMax),
       pressure_min: 0.10,
       pressure_max: Number(pressMax),
       flow_rate_min: Number(flowMin),
@@ -70,10 +73,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             </div>
             <div>
               <h3 className="text-base font-semibold tracking-tight text-gray-900">
-                执行器控制中心
+                水槽循环执行器控制
               </h3>
               <p className="text-xs text-gray-500 font-normal">
-                Actuator Overrides & Operating Modes
+                Inter-tank Circulation Pump & Heater Controls
               </p>
             </div>
           </div>
@@ -112,7 +115,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     isPumpActive ? 'text-blue-600 animate-spin' : 'text-gray-400'
                   }`}
                 />
-                <span className="text-sm font-semibold text-gray-800">循环水泵</span>
+                <span className="text-sm font-semibold text-gray-800">槽间循环水泵</span>
               </div>
               <button
                 disabled={isEmergency}
@@ -130,7 +133,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
             <div className="space-y-1.5">
               <div className="flex justify-between text-xs text-gray-600">
-                <span>水泵转速设定</span>
+                <span>水泵转速/输送流量设定</span>
                 <span className="font-mono font-bold text-gray-900">{pumpSpeed}%</span>
               </div>
               <input
@@ -194,7 +197,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
         {isAuto && (
           <div className="mt-4 p-3 rounded-lg bg-blue-50/70 border border-blue-100 text-blue-900 text-xs leading-relaxed">
-            💡 <strong>智能自控模式生效中</strong>：系统实时评估下方阈值，自动调节水泵转速并精准恒温，遇超温或超压时秒级联锁停机。
+            💡 <strong>智能自控模式生效中</strong>：系统实时根据双水槽水温、管道压力与循环流量闭环调控水泵与加热器，超压、超温或干烧时毫秒级联锁停机。
           </div>
         )}
       </div>
@@ -208,10 +211,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             </div>
             <div>
               <h3 className="text-base font-semibold tracking-tight text-gray-900">
-                自控规则与安全阈值
+                自控规则与安全阈值设定
               </h3>
               <p className="text-xs text-gray-500 font-normal">
-                Closed-Loop Thresholds & Safety Rules
+                Dual-Tank Control Setpoints & Safety Interlocks
               </p>
             </div>
           </div>
@@ -242,7 +245,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   °C
                 </span>
               </div>
-              <span className="text-[11px] text-gray-500">水温低于此值时自动启动加热</span>
+              <span className="text-[11px] text-gray-500">水槽水温低于此值时自动启动加热</span>
             </div>
 
             {/* Target Temp */}
@@ -262,7 +265,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   °C
                 </span>
               </div>
-              <span className="text-[11px] text-gray-500">水温到达此值时自动关闭加热</span>
+              <span className="text-[11px] text-gray-500">平均水温达到此值时自动关闭加热</span>
             </div>
 
             {/* Max Temp */}
@@ -282,7 +285,27 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   °C
                 </span>
               </div>
-              <span className="text-[11px] text-gray-500">超温时强制关闭加热并报警</span>
+              <span className="text-[11px] text-gray-500">任一水槽超温时强制关闭加热并报警</span>
+            </div>
+
+            {/* Temp Diff Max */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-700 block">
+                双槽温差上限 (Max Temp Diff)
+              </label>
+              <div className="flex rounded-lg shadow-xs">
+                <input
+                  type="number"
+                  step="0.5"
+                  value={tempDiffMax}
+                  onChange={(e) => setTempDiffMax(Number(e.target.value))}
+                  className="w-full bg-white rounded-l-lg border border-gray-300 px-3 py-1.5 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 font-mono"
+                />
+                <span className="bg-slate-50 border border-l-0 border-gray-300 px-3 py-1.5 text-gray-500 text-xs font-medium rounded-r-lg flex items-center">
+                  °C
+                </span>
+              </div>
+              <span className="text-[11px] text-gray-500">双水槽温差过大时触发平衡预警</span>
             </div>
 
             {/* Max Pressure */}
@@ -302,11 +325,11 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   MPa
                 </span>
               </div>
-              <span className="text-[11px] text-gray-500">压力超标时停泵保护管道</span>
+              <span className="text-[11px] text-gray-500">管道压力超标时停泵保护管路</span>
             </div>
 
             {/* Min Flow */}
-            <div className="space-y-1 sm:col-span-2">
+            <div className="space-y-1">
               <label className="text-xs font-medium text-gray-700 block">
                 最小流量防干烧 (Min Flow)
               </label>
@@ -322,7 +345,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   L/min
                 </span>
               </div>
-              <span className="text-[11px] text-gray-500">循环流量过低时强制切断加热防干烧</span>
+              <span className="text-[11px] text-gray-500">水泵循环流量过低时切断加热</span>
             </div>
           </div>
 

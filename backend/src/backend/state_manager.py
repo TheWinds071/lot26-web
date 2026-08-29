@@ -17,7 +17,7 @@ logger = logging.getLogger("state_manager")
 
 
 class StateManager:
-    """Manages dual-tank telemetry history, device control state, alarms, and auto-control logic."""
+    """Manages single-pipe dual-tank telemetry, bidirectional pump state, alarms, and auto-control logic."""
 
     def __init__(self, history_limit: int = 300, alarm_limit: int = 100):
         self.history_limit = history_limit
@@ -30,6 +30,7 @@ class StateManager:
         self.device_state = DeviceState(
             auto_mode=True,
             pump_active=True,
+            pump_direction="FORWARD",  # "FORWARD": Tank 1 -> Tank 2, "REVERSE": Tank 2 -> Tank 1
             pump_speed=60,
             heater_active=False,
             heater_power=0,
@@ -122,7 +123,7 @@ class StateManager:
         }
 
     def _evaluate_rules(self, telemetry: TelemetryData) -> bool:
-        """Evaluates dual-tank auto control rules and safety boundaries."""
+        """Evaluates single-pipe bidirectional auto control rules and safety boundaries."""
         action_taken = False
 
         if self.device_state.emergency_stop:
@@ -134,15 +135,15 @@ class StateManager:
                 action_taken = True
             return action_taken
 
-        # 1. Pipe Pressure Safety Check
+        # 1. Single Pipe Pressure Safety Check
         if telemetry.pressure >= self.thresholds.pressure_max:
             self.add_alarm(
                 level="CRITICAL",
                 type="OVERPRESSURE",
-                message=f"水槽管道超压危险: {telemetry.pressure:.2f} MPa (上限 {self.thresholds.pressure_max:.2f} MPa)",
+                message=f"单管道压力超限: {telemetry.pressure:.2f} MPa (上限 {self.thresholds.pressure_max:.2f} MPa)",
                 value=telemetry.pressure,
             )
-            # Pressure safety action: stop inter-tank pump & heater
+            # Pressure safety action: stop pump & heater immediately
             if self.device_state.auto_mode and self.device_state.pump_active:
                 self.device_state.pump_active = False
                 self.device_state.heater_active = False
@@ -152,7 +153,7 @@ class StateManager:
         else:
             self.resolve_alarm("OVERPRESSURE")
 
-        # 2. Dual-Tank Temperature Safety Check (Tank 1 & Tank 2)
+        # 2. Dual-Tank Temperature Safety Check
         max_current_temp = max(telemetry.temp_tank1, telemetry.temp_tank2)
         min_current_temp = min(telemetry.temp_tank1, telemetry.temp_tank2)
         temp_diff = abs(telemetry.temp_tank1 - telemetry.temp_tank2)
@@ -184,12 +185,12 @@ class StateManager:
         else:
             self.resolve_alarm("TEMP_DIFF")
 
-        # 3. Flow Rate / Inter-tank Dry-run Safety Check
+        # 3. Flow Rate / Dry-run Safety Check
         if self.device_state.pump_active and telemetry.flow_rate < self.thresholds.flow_rate_min:
             self.add_alarm(
                 level="WARNING",
                 type="LOW_FLOW",
-                message=f"水槽循环流速过低/防干烧: {telemetry.flow_rate:.1f} L/min (下限 {self.thresholds.flow_rate_min:.1f} L/min)",
+                message=f"管道流速过低/防干烧: {telemetry.flow_rate:.1f} L/min (下限 {self.thresholds.flow_rate_min:.1f} L/min)",
                 value=telemetry.flow_rate,
             )
             if self.device_state.heater_active:
@@ -200,19 +201,20 @@ class StateManager:
         else:
             self.resolve_alarm("LOW_FLOW")
 
-        # 4. Auto Control Logic (Inter-tank Heating & Circulation Flow)
+        # 4. Auto Control Logic (Smart Bidirectional Transfer & Heating)
         if self.device_state.auto_mode and not self.device_state.emergency_stop:
             avg_temp = (telemetry.temp_tank1 + telemetry.temp_tank2) / 2.0
 
             # Low Temperature Heating Trigger
             if min_current_temp <= self.thresholds.temp_min or avg_temp <= self.thresholds.temp_min:
+                # Need heating: if Tank 1 (with heater) is colder or if Tank 2 needs hot water from Tank 1
                 if not self.device_state.heater_active or not self.device_state.pump_active:
                     self.device_state.pump_active = True
                     self.device_state.heater_active = True
                     self.device_state.heater_power = 100
                     self.device_state.last_updated = datetime.now()
                     action_taken = True
-                    logger.info(f"[Auto Control] Dual-Tank Low Temp (T1={telemetry.temp_tank1:.1f}°C, T2={telemetry.temp_tank2:.1f}°C <= {self.thresholds.temp_min}°C) -> Engaged Pump & Heater")
+                    logger.info(f"[Auto Control] Low Temp (T1={telemetry.temp_tank1:.1f}°C, T2={telemetry.temp_tank2:.1f}°C <= {self.thresholds.temp_min}°C) -> Started Heater & Pump ({self.device_state.pump_direction})")
             elif avg_temp >= self.thresholds.temp_target:
                 # Target temperature reached in both tanks, turn off heater
                 if self.device_state.heater_active:
@@ -222,7 +224,7 @@ class StateManager:
                     action_taken = True
                     logger.info(f"[Auto Control] Target Temp Reached (Avg={avg_temp:.1f}°C >= {self.thresholds.temp_target}°C) -> Stopped Heater")
 
-            # Maintain inter-tank fluid circulation if pump stopped
+            # Maintain inter-tank fluid flow if pump stopped
             if not self.device_state.pump_active and telemetry.pressure < self.thresholds.pressure_max:
                 self.device_state.pump_active = True
                 self.device_state.last_updated = datetime.now()
@@ -258,12 +260,19 @@ class StateManager:
         self._notify("device_state_updated", self.device_state.model_dump(mode="json"))
         return self.device_state
 
-    def control_pump(self, active: bool, speed: Optional[int] = None) -> DeviceState:
+    def control_pump(
+        self,
+        active: bool,
+        speed: Optional[int] = None,
+        direction: Optional[str] = None,
+    ) -> DeviceState:
         if self.device_state.emergency_stop and active:
             raise ValueError("紧急急停状态下无法启动水泵！请先解除急停。")
         self.device_state.pump_active = active
         if speed is not None:
             self.device_state.pump_speed = max(0, min(100, speed))
+        if direction in ("FORWARD", "REVERSE"):
+            self.device_state.pump_direction = direction
         self.device_state.last_updated = datetime.now()
         self._notify("device_state_updated", self.device_state.model_dump(mode="json"))
         return self.device_state

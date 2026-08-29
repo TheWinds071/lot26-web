@@ -12,7 +12,7 @@ logger = logging.getLogger("tcp_server")
 
 
 class TCPServer:
-    """Async TCP Server receiving dual-tank telemetry from water circulation client."""
+    """Async TCP Server receiving dual-tank single-pipe telemetry from water circulation client."""
 
     def __init__(self, host: str = "0.0.0.0", port: int = 8888):
         self.host = host
@@ -31,7 +31,6 @@ class TCPServer:
         if text.startswith("{") and text.endswith("}"):
             try:
                 data = json.loads(text)
-                # Tank 1 & Tank 2 temperatures
                 t1 = data.get("temp_tank1", data.get("tank1_temp", data.get("t1", None)))
                 t2 = data.get("temp_tank2", data.get("tank2_temp", data.get("t2", None)))
                 legacy_temp = data.get("temperature", data.get("temp", data.get("t", 45.0)))
@@ -67,7 +66,6 @@ class TCPServer:
                 logger.warning(f"[TCP Server] JSON parse error: {e}, payload: {text}")
 
         # 2. Try Key-Value or CSV format:
-        # Format A (4 numbers): "45.0, 42.5, 0.35, 18.0" -> t1, t2, pressure, flow
         csv_4 = re.search(r"(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)", text)
         if csv_4:
             try:
@@ -87,7 +85,6 @@ class TCPServer:
             except Exception as e:
                 logger.warning(f"[TCP Server] CSV 4-field parse error: {e}")
 
-        # Format B (3 numbers legacy): "45.0, 0.35, 18.0" -> temp, pressure, flow
         csv_3 = re.search(r"(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)", text)
         if csv_3:
             try:
@@ -151,6 +148,7 @@ class TCPServer:
                                 "status": "ACK",
                                 "pump_active": state_manager.device_state.pump_active,
                                 "pump_speed": state_manager.device_state.pump_speed,
+                                "pump_direction": state_manager.device_state.pump_direction,
                                 "heater_active": state_manager.device_state.heater_active,
                                 "heater_power": state_manager.device_state.heater_power,
                                 "emergency_stop": state_manager.device_state.emergency_stop,

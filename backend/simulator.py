@@ -6,26 +6,27 @@ import sys
 import time
 
 
-class DualTankCirculationSimulator:
-    """Simulates physical dynamics of a dual-tank water circulation system with sensors and actuators."""
+class SinglePipeDualTankSimulator:
+    """Simulates physical dynamics of a single-pipe dual-tank water circulation system with bidirectional pump."""
 
     def __init__(self, host: str = "127.0.0.1", port: int = 8888, interval: float = 1.0):
         self.host = host
         self.port = port
         self.interval = interval
 
-        # Physical state variables for 2 water tanks
-        self.temp_tank1 = 38.5   # Water Temp in Tank 1 (°C)
-        self.temp_tank2 = 34.0   # Water Temp in Tank 2 (°C)
-        self.water_level_tank1 = 78.0  # Tank 1 level (%)
-        self.water_level_tank2 = 62.0  # Tank 2 level (%)
+        # Physical state variables for 2 water tanks connected by 1 single pipe
+        self.temp_tank1 = 48.0   # Tank 1 Temp (°C)
+        self.temp_tank2 = 32.0   # Tank 2 Temp (°C)
+        self.water_level_tank1 = 75.0  # Tank 1 level (%)
+        self.water_level_tank2 = 65.0  # Tank 2 level (%)
 
         self.ambient_temp = 22.0  # Ambient room temp (°C)
-        self.pressure = 0.35      # Inter-tank pipe pressure (MPa)
-        self.flow_rate = 18.0     # Circulation flow rate (L/min)
+        self.pressure = 0.35      # Single pipe pressure (MPa)
+        self.flow_rate = 18.0     # Pipe flow rate (L/min)
 
         # Actuator states (updated via TCP server downlink ACKs)
         self.pump_active = True
+        self.pump_direction = "FORWARD"  # "FORWARD" (1->2) or "REVERSE" (2->1)
         self.pump_speed = 60      # %
         self.heater_active = False
         self.heater_power = 0     # %
@@ -37,16 +38,14 @@ class DualTankCirculationSimulator:
         self.inject_dry_run = False
 
     def step_physics(self, dt: float = 1.0):
-        """Calculates physical changes over time delta dt for dual tanks."""
-        # 1. Pump and Inter-tank Flow / Pressure Dynamics
+        """Calculates physical changes across the single pipe over time delta dt."""
+        # 1. Pump, Pressure & Flow Dynamics in Single Pipe
         if self.emergency_stop or not self.pump_active:
             target_flow = 0.0
             target_pressure = 0.04
         else:
-            # Flow proportional to pump speed (max ~ 35 L/min at 100% speed)
             speed_ratio = self.pump_speed / 100.0
             target_flow = speed_ratio * 30.0
-            # Pipe pressure proportional to pump speed
             target_pressure = 0.12 + speed_ratio * 0.46
 
         if self.inject_overpressure:
@@ -61,42 +60,42 @@ class DualTankCirculationSimulator:
         self.pressure += (target_pressure - self.pressure) * 0.4 + random.uniform(-0.01, 0.01)
         self.pressure = max(0.0, self.pressure)
 
-        # 2. Dual-Tank Thermodynamic & Fluid Mixing Dynamics
+        # 2. Single-Pipe Bidirectional Thermodynamic & Liquid Transfer Dynamics
         if self.inject_high_temp:
             self.temp_tank1 += 2.0 * dt
             self.temp_tank2 += 1.5 * dt
         else:
-            # Heating chamber heats water flowing into or stored in Tank 1
+            # Heater in Tank 1
             if self.heater_active and not self.emergency_stop:
                 heat_power_factor = (self.heater_power / 100.0) * 1.6
                 flow_factor = 1.0 if self.flow_rate < 5 else 30.0 / (self.flow_rate + 10.0)
                 self.temp_tank1 += heat_power_factor * flow_factor * dt * 0.35
             else:
-                # Tank 1 natural ambient cooling
-                self.temp_tank1 += (self.ambient_temp - self.temp_tank1) * 0.04 * dt
+                # Natural cooling towards ambient
+                self.temp_tank1 += (self.ambient_temp - self.temp_tank1) * 0.03 * dt
 
-            # Tank 2 receives heated circulating water from Tank 1 via pump
+            # Single-Pipe Water Transfer between Tank 1 and Tank 2
             if self.pump_active and self.flow_rate > 1.0:
-                # Water mixing rate between Tank 1 and Tank 2 proportional to flow rate
-                mixing_rate = min(0.3, (self.flow_rate / 30.0) * 0.12 * dt)
-                self.temp_tank2 += (self.temp_tank1 - self.temp_tank2) * mixing_rate
+                transfer_rate = min(0.35, (self.flow_rate / 30.0) * 0.15 * dt)
+                if self.pump_direction == "FORWARD":
+                    # FORWARD (1 -> 2): Hot water flows from Tank 1 into Tank 2
+                    self.temp_tank2 += (self.temp_tank1 - self.temp_tank2) * transfer_rate
+                    self.water_level_tank1 = max(30.0, self.water_level_tank1 - 0.2 * dt)
+                    self.water_level_tank2 = min(90.0, self.water_level_tank2 + 0.2 * dt)
+                else:
+                    # REVERSE (2 -> 1): Water flows from Tank 2 back into Tank 1
+                    self.temp_tank1 += (self.temp_tank2 - self.temp_tank1) * transfer_rate
+                    self.water_level_tank1 = min(90.0, self.water_level_tank1 + 0.2 * dt)
+                    self.water_level_tank2 = max(30.0, self.water_level_tank2 - 0.2 * dt)
             else:
                 # Tank 2 natural ambient cooling
-                self.temp_tank2 += (self.ambient_temp - self.temp_tank2) * 0.03 * dt
+                self.temp_tank2 += (self.ambient_temp - self.temp_tank2) * 0.02 * dt
 
-        # Water level subtle breathing
-        if self.pump_active and self.flow_rate > 2.0:
-            self.water_level_tank1 = 75.0 + random.uniform(-1.0, 1.0)
-            self.water_level_tank2 = 65.0 + random.uniform(-1.0, 1.0)
-        else:
-            self.water_level_tank1 = 75.0
-            self.water_level_tank2 = 65.0
-
-        self.temp_tank1 += random.uniform(-0.04, 0.04)
-        self.temp_tank2 += random.uniform(-0.04, 0.04)
+        self.temp_tank1 += random.uniform(-0.03, 0.03)
+        self.temp_tank2 += random.uniform(-0.03, 0.03)
 
     async def run(self):
-        print(f"🌊 [Simulator] Starting Dual-Tank Water Circulation Simulator...")
+        print(f"🌊 [Simulator] Starting Single-Pipe Dual-Tank Circulation Simulator...")
         print(f"📡 [Simulator] Connecting to TCP Server at {self.host}:{self.port}...")
 
         while True:
@@ -123,12 +122,13 @@ class DualTankCirculationSimulator:
                     writer.write(data_str.encode("utf-8"))
                     await writer.drain()
 
+                    dir_label = "1➔2 正转" if self.pump_direction == "FORWARD" else "2➔1 反转"
                     print(
                         f"📤 Telemetry Sent -> Tank1: {payload['temp_tank1']:4.1f}°C | "
                         f"Tank2: {payload['temp_tank2']:4.1f}°C | "
                         f"Press: {payload['pressure']:4.2f}MPa | "
                         f"Flow: {payload['flow_rate']:4.1f}L/min | "
-                        f"Actuators: [Pump: {'ON' if self.pump_active else 'OFF'} ({self.pump_speed}%), "
+                        f"Pump: [{'ON' if self.pump_active else 'OFF'} {dir_label} ({self.pump_speed}%), "
                         f"Heater: {'ON' if self.heater_active else 'OFF'} ({self.heater_power}%)]"
                     )
 
@@ -142,6 +142,8 @@ class DualTankCirculationSimulator:
                                 self.pump_active = resp_json["pump_active"]
                             if "pump_speed" in resp_json:
                                 self.pump_speed = resp_json["pump_speed"]
+                            if "pump_direction" in resp_json:
+                                self.pump_direction = resp_json["pump_direction"]
                             if "heater_active" in resp_json:
                                 self.heater_active = resp_json["heater_active"]
                             if "heater_power" in resp_json:
@@ -166,13 +168,13 @@ class DualTankCirculationSimulator:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Dual-Tank Water Circulation TCP Client Simulator")
+    parser = argparse.ArgumentParser(description="Single-Pipe Dual-Tank TCP Client Simulator")
     parser.add_argument("--host", default="127.0.0.1", help="TCP server host")
     parser.add_argument("--port", type=int, default=8888, help="TCP server port")
     parser.add_argument("--interval", type=float, default=1.0, help="Reporting interval in seconds")
     args = parser.parse_args()
 
-    sim = DualTankCirculationSimulator(host=args.host, port=args.port, interval=args.interval)
+    sim = SinglePipeDualTankSimulator(host=args.host, port=args.port, interval=args.interval)
     try:
         asyncio.run(sim.run())
     except KeyboardInterrupt:

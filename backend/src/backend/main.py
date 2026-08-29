@@ -19,59 +19,53 @@ from backend.models import (
 from backend.state_manager import state_manager
 from backend.tcp_server import TCPServer
 
-logger = logging.getLogger("main")
+# Setup logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
+logger = logging.getLogger("main")
 
-TCP_HOST = os.getenv("TCP_HOST", "0.0.0.0")
-TCP_PORT = int(os.getenv("TCP_PORT", "8888"))
+TCP_PORT = int(os.environ.get("TCP_PORT", "8888"))
+TCP_HOST = os.environ.get("TCP_HOST", "0.0.0.0")
 
 tcp_server = TCPServer(host=TCP_HOST, port=TCP_PORT)
-
-# Active WebSocket connections
 active_websockets: List[WebSocket] = []
 
 
-def on_state_event(payload: dict):
-    """Callback from StateManager to broadcast real-time updates to all frontend WebSockets."""
+def on_state_event(payload: dict) -> None:
+    """Callback triggered whenever state_manager emits an update; broadcasts to all WebSocket clients."""
     if not active_websockets:
         return
-
-    message = json.dumps(payload)
-    disconnected = []
+    msg_text = json.dumps(payload)
     for ws in list(active_websockets):
         try:
-            asyncio.create_task(ws.send_text(message))
-        except Exception:
-            disconnected.append(ws)
-
-    for ws in disconnected:
-        if ws in active_websockets:
-            active_websockets.remove(ws)
+            asyncio.create_task(ws.send_text(msg_text))
+        except Exception as e:
+            logger.warning(f"Failed to send to websocket client: {e}")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Register state event listener for WebSockets
+    # Startup
+    logger.info("Initializing Smart Water Circulation System Backend...")
     state_manager.subscribe(on_state_event)
-    # Start TCP Server
     await tcp_server.start()
     yield
-    # Cleanup
+    # Shutdown
+    logger.info("Shutting down Smart Water Circulation System Backend...")
     state_manager.unsubscribe(on_state_event)
     await tcp_server.stop()
 
 
 app = FastAPI(
-    title="Smart Water Circulation Monitoring API & TCP Server",
+    title="Smart Water Circulation Monitoring API",
+    description="REST & WebSocket API for Real-time Water Circulation Monitoring and Automated Actuator Control",
     version="1.0.0",
-    description="Backend service for Smart Water Circulation Monitoring System with TCP telemetry ingestion and auto-control",
     lifespan=lifespan,
 )
 
-# Enable CORS for Frontend development
+# Enable CORS for Frontend Development
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -89,6 +83,7 @@ class ModeRequest(BaseModel):
 class PumpControlRequest(BaseModel):
     active: bool
     speed: Optional[int] = None
+    direction: Optional[str] = None  # "FORWARD" | "REVERSE"
 
 
 class HeaterControlRequest(BaseModel):
@@ -104,7 +99,7 @@ class EmergencyStopRequest(BaseModel):
 async def root():
     return {
         "status": "ok",
-        "system": "Smart Water Circulation Monitoring System",
+        "system": "Single-Pipe Dual-Tank Smart Water Circulation System",
         "version": "1.0.0",
         "tcp_port": TCP_PORT,
     }
@@ -167,13 +162,14 @@ async def toggle_emergency_stop(req: EmergencyStopRequest):
 
 @app.post("/api/control/pump", response_model=DeviceState)
 async def control_pump(req: PumpControlRequest):
-    """Manual pump control (on/off, speed)."""
+    """Manual pump control (on/off, speed, direction)."""
     try:
-        state = state_manager.control_pump(req.active, req.speed)
+        state = state_manager.control_pump(req.active, req.speed, req.direction)
         await tcp_server.broadcast_downlink({
             "cmd": "PUMP_CONTROL",
             "pump_active": state.pump_active,
             "pump_speed": state.pump_speed,
+            "pump_direction": state.pump_direction,
         })
         return state
     except ValueError as e:
@@ -221,7 +217,9 @@ async def websocket_telemetry(websocket: WebSocket):
                     state_manager.set_auto_mode(msg.get("auto_mode", True))
                 elif action == "set_pump":
                     state_manager.control_pump(
-                        msg.get("active", False), msg.get("speed")
+                        msg.get("active", False),
+                        msg.get("speed"),
+                        msg.get("direction"),
                     )
                 elif action == "set_heater":
                     state_manager.control_heater(

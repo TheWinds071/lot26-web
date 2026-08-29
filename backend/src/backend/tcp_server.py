@@ -12,7 +12,7 @@ logger = logging.getLogger("tcp_server")
 
 
 class TCPServer:
-    """Async TCP Server receiving telemetry from water circulation client."""
+    """Async TCP Server receiving dual-tank telemetry from water circulation client."""
 
     def __init__(self, host: str = "0.0.0.0", port: int = 8888):
         self.host = host
@@ -22,7 +22,7 @@ class TCPServer:
         self._active_clients: Set[asyncio.StreamWriter] = set()
 
     def parse_telemetry_payload(self, text: str) -> Optional[TelemetryData]:
-        """Parses incoming JSON or formatted text telemetry payload."""
+        """Parses incoming JSON or formatted text telemetry payload for dual tanks."""
         text = text.strip()
         if not text:
             return None
@@ -31,36 +31,80 @@ class TCPServer:
         if text.startswith("{") and text.endswith("}"):
             try:
                 data = json.loads(text)
-                temp = float(data.get("temperature", data.get("temp", data.get("t", 0.0))))
+                # Tank 1 & Tank 2 temperatures
+                t1 = data.get("temp_tank1", data.get("tank1_temp", data.get("t1", None)))
+                t2 = data.get("temp_tank2", data.get("tank2_temp", data.get("t2", None)))
+                legacy_temp = data.get("temperature", data.get("temp", data.get("t", 45.0)))
+
+                if t1 is None:
+                    t1 = float(legacy_temp)
+                else:
+                    t1 = float(t1)
+
+                if t2 is None:
+                    t2 = float(legacy_temp)
+                else:
+                    t2 = float(t2)
+
                 press = float(data.get("pressure", data.get("press", data.get("p", 0.0))))
                 flow = float(data.get("flow_rate", data.get("flow", data.get("f", 0.0))))
-                dev_id = str(data.get("device_id", data.get("dev", "PUMP_STATION_01")))
+                lvl1 = float(data.get("water_level_tank1", data.get("lvl1", 75.0)))
+                lvl2 = float(data.get("water_level_tank2", data.get("lvl2", 65.0)))
+                dev_id = str(data.get("device_id", data.get("dev", "DUAL_TANK_STATION_01")))
+
                 return TelemetryData(
                     device_id=dev_id,
-                    temperature=temp,
+                    temp_tank1=t1,
+                    temp_tank2=t2,
+                    temperature=round((t1 + t2) / 2.0, 2),
                     pressure=press,
                     flow_rate=flow,
+                    water_level_tank1=lvl1,
+                    water_level_tank2=lvl2,
                     timestamp=datetime.now(),
                 )
             except Exception as e:
                 logger.warning(f"[TCP Server] JSON parse error: {e}, payload: {text}")
 
-        # 2. Try Key-Value or CSV format: e.g. "DATA,45.5,0.32,18.0" or "T:45.5,P:0.32,F:18.0"
-        csv_match = re.search(r"(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)", text)
-        if csv_match:
+        # 2. Try Key-Value or CSV format:
+        # Format A (4 numbers): "45.0, 42.5, 0.35, 18.0" -> t1, t2, pressure, flow
+        csv_4 = re.search(r"(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)", text)
+        if csv_4:
             try:
-                t = float(csv_match.group(1))
-                p = float(csv_match.group(2))
-                f = float(csv_match.group(3))
+                t1 = float(csv_4.group(1))
+                t2 = float(csv_4.group(2))
+                p = float(csv_4.group(3))
+                f = float(csv_4.group(4))
                 return TelemetryData(
-                    device_id="PUMP_STATION_01",
+                    device_id="DUAL_TANK_STATION_01",
+                    temp_tank1=t1,
+                    temp_tank2=t2,
+                    temperature=round((t1 + t2) / 2.0, 2),
+                    pressure=p,
+                    flow_rate=f,
+                    timestamp=datetime.now(),
+                )
+            except Exception as e:
+                logger.warning(f"[TCP Server] CSV 4-field parse error: {e}")
+
+        # Format B (3 numbers legacy): "45.0, 0.35, 18.0" -> temp, pressure, flow
+        csv_3 = re.search(r"(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)", text)
+        if csv_3:
+            try:
+                t = float(csv_3.group(1))
+                p = float(csv_3.group(2))
+                f = float(csv_3.group(3))
+                return TelemetryData(
+                    device_id="DUAL_TANK_STATION_01",
+                    temp_tank1=t,
+                    temp_tank2=t,
                     temperature=t,
                     pressure=p,
                     flow_rate=f,
                     timestamp=datetime.now(),
                 )
             except Exception as e:
-                logger.warning(f"[TCP Server] CSV parse error: {e}")
+                logger.warning(f"[TCP Server] CSV 3-field parse error: {e}")
 
         return None
 
@@ -94,7 +138,8 @@ class TCPServer:
                         if telemetry:
                             logger.info(
                                 f"[TCP Server] Telemetry from {client_address}: "
-                                f"Temp={telemetry.temperature:.1f}°C, "
+                                f"Tank1={telemetry.temp_tank1:.1f}°C, "
+                                f"Tank2={telemetry.temp_tank2:.1f}°C, "
                                 f"Press={telemetry.pressure:.2f}MPa, "
                                 f"Flow={telemetry.flow_rate:.1f}L/min"
                             )

@@ -17,7 +17,7 @@ logger = logging.getLogger("state_manager")
 
 
 class StateManager:
-    """Manages telemetry history, device control state, alarms, and auto-control logic."""
+    """Manages dual-tank telemetry history, device control state, alarms, and auto-control logic."""
 
     def __init__(self, history_limit: int = 300, alarm_limit: int = 100):
         self.history_limit = history_limit
@@ -99,7 +99,7 @@ class StateManager:
                 self._notify("alarm_resolved", {"type": alarm_type, "id": alarm.id})
 
     def process_telemetry(self, telemetry: TelemetryData) -> dict:
-        """Ingests new telemetry data, runs auto-control rule engine, returns control decisions."""
+        """Ingests new dual-tank telemetry, runs auto-control rule engine, returns control decisions."""
         self.latest_telemetry = telemetry
         self.telemetry_history.append(telemetry)
         self.last_packet_time = datetime.now()
@@ -122,7 +122,7 @@ class StateManager:
         }
 
     def _evaluate_rules(self, telemetry: TelemetryData) -> bool:
-        """Evaluates auto control rules and safety boundaries."""
+        """Evaluates dual-tank auto control rules and safety boundaries."""
         action_taken = False
 
         if self.device_state.emergency_stop:
@@ -134,15 +134,15 @@ class StateManager:
                 action_taken = True
             return action_taken
 
-        # 1. Pressure Safety Check
+        # 1. Pipe Pressure Safety Check
         if telemetry.pressure >= self.thresholds.pressure_max:
             self.add_alarm(
                 level="CRITICAL",
                 type="OVERPRESSURE",
-                message=f"管道压力超限: {telemetry.pressure:.2f} MPa (上限 {self.thresholds.pressure_max:.2f} MPa)",
+                message=f"水槽管道超压危险: {telemetry.pressure:.2f} MPa (上限 {self.thresholds.pressure_max:.2f} MPa)",
                 value=telemetry.pressure,
             )
-            # Pressure safety action: stop or throttle pump
+            # Pressure safety action: stop inter-tank pump & heater
             if self.device_state.auto_mode and self.device_state.pump_active:
                 self.device_state.pump_active = False
                 self.device_state.heater_active = False
@@ -152,13 +152,18 @@ class StateManager:
         else:
             self.resolve_alarm("OVERPRESSURE")
 
-        # 2. Temperature Safety & Heating Control
-        if telemetry.temperature >= self.thresholds.temp_max:
+        # 2. Dual-Tank Temperature Safety Check (Tank 1 & Tank 2)
+        max_current_temp = max(telemetry.temp_tank1, telemetry.temp_tank2)
+        min_current_temp = min(telemetry.temp_tank1, telemetry.temp_tank2)
+        temp_diff = abs(telemetry.temp_tank1 - telemetry.temp_tank2)
+
+        if max_current_temp >= self.thresholds.temp_max:
+            tank_label = "水槽1" if telemetry.temp_tank1 >= self.thresholds.temp_max else "水槽2"
             self.add_alarm(
                 level="ERROR",
                 type="TEMP_HIGH",
-                message=f"水温过高: {telemetry.temperature:.1f} °C (最高阈值 {self.thresholds.temp_max:.1f} °C)",
-                value=telemetry.temperature,
+                message=f"{tank_label}水温超高: {max_current_temp:.1f} °C (上限 {self.thresholds.temp_max:.1f} °C)",
+                value=max_current_temp,
             )
             if self.device_state.heater_active:
                 self.device_state.heater_active = False
@@ -168,15 +173,25 @@ class StateManager:
         else:
             self.resolve_alarm("TEMP_HIGH")
 
-        # 3. Flow Rate / Dry-run Safety Check
+        # Temperature differential alert between the two tanks
+        if temp_diff >= self.thresholds.temp_diff_max:
+            self.add_alarm(
+                level="WARNING",
+                type="TEMP_DIFF",
+                message=f"双水槽温差过大: {temp_diff:.1f} °C (水槽1: {telemetry.temp_tank1:.1f}°C, 水槽2: {telemetry.temp_tank2:.1f}°C, 阈值 {self.thresholds.temp_diff_max:.1f}°C)",
+                value=temp_diff,
+            )
+        else:
+            self.resolve_alarm("TEMP_DIFF")
+
+        # 3. Flow Rate / Inter-tank Dry-run Safety Check
         if self.device_state.pump_active and telemetry.flow_rate < self.thresholds.flow_rate_min:
             self.add_alarm(
                 level="WARNING",
                 type="LOW_FLOW",
-                message=f"水流过低/防干烧预警: {telemetry.flow_rate:.1f} L/min (下限 {self.thresholds.flow_rate_min:.1f} L/min)",
+                message=f"水槽循环流速过低/防干烧: {telemetry.flow_rate:.1f} L/min (下限 {self.thresholds.flow_rate_min:.1f} L/min)",
                 value=telemetry.flow_rate,
             )
-            # In severe dry-run condition, heating must be turned off to avoid damage
             if self.device_state.heater_active:
                 self.device_state.heater_active = False
                 self.device_state.heater_power = 0
@@ -185,30 +200,30 @@ class StateManager:
         else:
             self.resolve_alarm("LOW_FLOW")
 
-        # 4. Auto Control Logic (Heating & Circulation)
+        # 4. Auto Control Logic (Inter-tank Heating & Circulation Flow)
         if self.device_state.auto_mode and not self.device_state.emergency_stop:
-            # Automatic Temperature Regulation
-            if telemetry.temperature <= self.thresholds.temp_min:
-                # Water is too cold, engage heater and ensure pump is running for circulation
+            avg_temp = (telemetry.temp_tank1 + telemetry.temp_tank2) / 2.0
+
+            # Low Temperature Heating Trigger
+            if min_current_temp <= self.thresholds.temp_min or avg_temp <= self.thresholds.temp_min:
                 if not self.device_state.heater_active or not self.device_state.pump_active:
                     self.device_state.pump_active = True
                     self.device_state.heater_active = True
                     self.device_state.heater_power = 100
                     self.device_state.last_updated = datetime.now()
                     action_taken = True
-                    logger.info(f"[Auto Control] Low Temp ({telemetry.temperature:.1f}°C <= {self.thresholds.temp_min}°C) -> Started Heater & Pump")
-            elif telemetry.temperature >= self.thresholds.temp_target:
-                # Target temperature reached, turn off heater
+                    logger.info(f"[Auto Control] Dual-Tank Low Temp (T1={telemetry.temp_tank1:.1f}°C, T2={telemetry.temp_tank2:.1f}°C <= {self.thresholds.temp_min}°C) -> Engaged Pump & Heater")
+            elif avg_temp >= self.thresholds.temp_target:
+                # Target temperature reached in both tanks, turn off heater
                 if self.device_state.heater_active:
                     self.device_state.heater_active = False
                     self.device_state.heater_power = 0
                     self.device_state.last_updated = datetime.now()
                     action_taken = True
-                    logger.info(f"[Auto Control] Target Temp Reached ({telemetry.temperature:.1f}°C >= {self.thresholds.temp_target}°C) -> Stopped Heater")
+                    logger.info(f"[Auto Control] Target Temp Reached (Avg={avg_temp:.1f}°C >= {self.thresholds.temp_target}°C) -> Stopped Heater")
 
-            # Automatic Pump Flow Control
-            if not self.device_state.pump_active and telemetry.temperature > self.thresholds.temp_min:
-                # Maintain basic circulation
+            # Maintain inter-tank fluid circulation if pump stopped
+            if not self.device_state.pump_active and telemetry.pressure < self.thresholds.pressure_max:
                 self.device_state.pump_active = True
                 self.device_state.last_updated = datetime.now()
                 action_taken = True
@@ -235,7 +250,7 @@ class StateManager:
             self.add_alarm(
                 level="CRITICAL",
                 type="EMERGENCY_STOP",
-                message="紧急急停按钮已被按下！所有执行器已强制关闭。",
+                message="紧急急停按钮已被按下！所有水泵与加热器已强制锁定关闭。",
             )
         else:
             self.resolve_alarm("EMERGENCY_STOP")

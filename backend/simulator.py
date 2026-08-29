@@ -6,19 +6,23 @@ import sys
 import time
 
 
-class WaterCirculationSimulator:
-    """Simulates physical dynamics of a water circulation loop with sensors and actuators."""
+class DualTankCirculationSimulator:
+    """Simulates physical dynamics of a dual-tank water circulation system with sensors and actuators."""
 
     def __init__(self, host: str = "127.0.0.1", port: int = 8888, interval: float = 1.0):
         self.host = host
         self.port = port
         self.interval = interval
 
-        # Physical state variables
-        self.temperature = 38.0  # Initial water temp (°C)
-        self.ambient_temp = 24.0  # Ambient room temp (°C)
-        self.pressure = 0.35     # MPa
-        self.flow_rate = 18.0    # L/min
+        # Physical state variables for 2 water tanks
+        self.temp_tank1 = 38.5   # Water Temp in Tank 1 (°C)
+        self.temp_tank2 = 34.0   # Water Temp in Tank 2 (°C)
+        self.water_level_tank1 = 78.0  # Tank 1 level (%)
+        self.water_level_tank2 = 62.0  # Tank 2 level (%)
+
+        self.ambient_temp = 22.0  # Ambient room temp (°C)
+        self.pressure = 0.35      # Inter-tank pipe pressure (MPa)
+        self.flow_rate = 18.0     # Circulation flow rate (L/min)
 
         # Actuator states (updated via TCP server downlink ACKs)
         self.pump_active = True
@@ -33,17 +37,17 @@ class WaterCirculationSimulator:
         self.inject_dry_run = False
 
     def step_physics(self, dt: float = 1.0):
-        """Calculates physical changes over time delta dt."""
-        # 1. Pump and Flow / Pressure Dynamics
+        """Calculates physical changes over time delta dt for dual tanks."""
+        # 1. Pump and Inter-tank Flow / Pressure Dynamics
         if self.emergency_stop or not self.pump_active:
             target_flow = 0.0
-            target_pressure = 0.05
+            target_pressure = 0.04
         else:
             # Flow proportional to pump speed (max ~ 35 L/min at 100% speed)
             speed_ratio = self.pump_speed / 100.0
             target_flow = speed_ratio * 30.0
-            # Pressure proportional to pump speed
-            target_pressure = 0.10 + speed_ratio * 0.45
+            # Pipe pressure proportional to pump speed
+            target_pressure = 0.12 + speed_ratio * 0.46
 
         if self.inject_overpressure:
             target_pressure = 0.95  # Exceeds max 0.8 MPa
@@ -57,25 +61,42 @@ class WaterCirculationSimulator:
         self.pressure += (target_pressure - self.pressure) * 0.4 + random.uniform(-0.01, 0.01)
         self.pressure = max(0.0, self.pressure)
 
-        # 2. Temperature Dynamics
+        # 2. Dual-Tank Thermodynamic & Fluid Mixing Dynamics
         if self.inject_high_temp:
-            self.temperature += 2.0 * dt
+            self.temp_tank1 += 2.0 * dt
+            self.temp_tank2 += 1.5 * dt
         else:
+            # Heating chamber heats water flowing into or stored in Tank 1
             if self.heater_active and not self.emergency_stop:
-                # Heating rate depending on power and water flow
-                heat_power_factor = (self.heater_power / 100.0) * 1.8
-                # Slower rise if high flow, faster if low flow
+                heat_power_factor = (self.heater_power / 100.0) * 1.6
                 flow_factor = 1.0 if self.flow_rate < 5 else 30.0 / (self.flow_rate + 10.0)
-                self.temperature += heat_power_factor * flow_factor * dt * 0.3
+                self.temp_tank1 += heat_power_factor * flow_factor * dt * 0.35
             else:
-                # Natural cooling towards ambient
-                cooling_rate = 0.05 * dt
-                self.temperature += (self.ambient_temp - self.temperature) * cooling_rate
+                # Tank 1 natural ambient cooling
+                self.temp_tank1 += (self.ambient_temp - self.temp_tank1) * 0.04 * dt
 
-        self.temperature += random.uniform(-0.05, 0.05)
+            # Tank 2 receives heated circulating water from Tank 1 via pump
+            if self.pump_active and self.flow_rate > 1.0:
+                # Water mixing rate between Tank 1 and Tank 2 proportional to flow rate
+                mixing_rate = min(0.3, (self.flow_rate / 30.0) * 0.12 * dt)
+                self.temp_tank2 += (self.temp_tank1 - self.temp_tank2) * mixing_rate
+            else:
+                # Tank 2 natural ambient cooling
+                self.temp_tank2 += (self.ambient_temp - self.temp_tank2) * 0.03 * dt
+
+        # Water level subtle breathing
+        if self.pump_active and self.flow_rate > 2.0:
+            self.water_level_tank1 = 75.0 + random.uniform(-1.0, 1.0)
+            self.water_level_tank2 = 65.0 + random.uniform(-1.0, 1.0)
+        else:
+            self.water_level_tank1 = 75.0
+            self.water_level_tank2 = 65.0
+
+        self.temp_tank1 += random.uniform(-0.04, 0.04)
+        self.temp_tank2 += random.uniform(-0.04, 0.04)
 
     async def run(self):
-        print(f"🌊 [Simulator] Starting Smart Water Circulation Simulator...")
+        print(f"🌊 [Simulator] Starting Dual-Tank Water Circulation Simulator...")
         print(f"📡 [Simulator] Connecting to TCP Server at {self.host}:{self.port}...")
 
         while True:
@@ -87,21 +108,26 @@ class WaterCirculationSimulator:
                     start_time = time.time()
                     self.step_physics(self.interval)
 
-                    # Prepare telemetry packet
+                    # Prepare dual-tank telemetry packet
                     payload = {
-                        "device_id": "STATION_SMART_01",
-                        "temperature": round(self.temperature, 2),
+                        "device_id": "DUAL_TANK_STATION_01",
+                        "temp_tank1": round(self.temp_tank1, 2),
+                        "temp_tank2": round(self.temp_tank2, 2),
+                        "temperature": round((self.temp_tank1 + self.temp_tank2) / 2.0, 2),
                         "pressure": round(self.pressure, 3),
                         "flow_rate": round(self.flow_rate, 2),
+                        "water_level_tank1": round(self.water_level_tank1, 1),
+                        "water_level_tank2": round(self.water_level_tank2, 1),
                     }
                     data_str = json.dumps(payload) + "\n"
                     writer.write(data_str.encode("utf-8"))
                     await writer.drain()
 
                     print(
-                        f"📤 Telemetry Sent -> Temp: {payload['temperature']:5.1f}°C | "
-                        f"Press: {payload['pressure']:5.2f}MPa | "
-                        f"Flow: {payload['flow_rate']:5.1f}L/min | "
+                        f"📤 Telemetry Sent -> Tank1: {payload['temp_tank1']:4.1f}°C | "
+                        f"Tank2: {payload['temp_tank2']:4.1f}°C | "
+                        f"Press: {payload['pressure']:4.2f}MPa | "
+                        f"Flow: {payload['flow_rate']:4.1f}L/min | "
                         f"Actuators: [Pump: {'ON' if self.pump_active else 'OFF'} ({self.pump_speed}%), "
                         f"Heater: {'ON' if self.heater_active else 'OFF'} ({self.heater_power}%)]"
                     )
@@ -140,13 +166,13 @@ class WaterCirculationSimulator:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Water Circulation TCP Client Simulator")
+    parser = argparse.ArgumentParser(description="Dual-Tank Water Circulation TCP Client Simulator")
     parser.add_argument("--host", default="127.0.0.1", help="TCP server host")
     parser.add_argument("--port", type=int, default=8888, help="TCP server port")
     parser.add_argument("--interval", type=float, default=1.0, help="Reporting interval in seconds")
     args = parser.parse_args()
 
-    sim = WaterCirculationSimulator(host=args.host, port=args.port, interval=args.interval)
+    sim = DualTankCirculationSimulator(host=args.host, port=args.port, interval=args.interval)
     try:
         asyncio.run(sim.run())
     except KeyboardInterrupt:

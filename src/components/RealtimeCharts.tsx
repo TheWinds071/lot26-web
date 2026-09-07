@@ -1,5 +1,14 @@
-import React, { useState } from 'react';
-import { TrendingUp } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import {
+  Calendar,
+  Clock,
+  Database,
+  Download,
+  History,
+  Play,
+  RefreshCw,
+  TrendingUp,
+} from 'lucide-react';
 import type { TelemetryData } from '../types';
 
 interface RealtimeChartsProps {
@@ -7,6 +16,7 @@ interface RealtimeChartsProps {
   isPlayback?: boolean;
   playbackIndex?: number;
   onSeek?: (index: number) => void;
+  onStartPlayback?: (records: TelemetryData[]) => void;
 }
 
 const formatTime = (ts?: string, index?: number): string => {
@@ -223,6 +233,40 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
             </g>
           );
         })}
+
+        {/* X-axis time ticks */}
+        {dataPoints.length > 1 &&
+          [0, 0.25, 0.5, 0.75, 1].map((pct, idx) => {
+            const dataIdx = Math.min(
+              dataPoints.length - 1,
+              Math.floor(pct * (dataPoints.length - 1))
+            );
+            const x = getX(dataIdx);
+            const timeStr = formatTime(dataPoints[dataIdx].timestamp, dataIdx);
+            const textAnchor = idx === 0 ? 'start' : idx === 4 ? 'end' : 'middle';
+            return (
+              <g key={`x-tick-${pct}`} pointerEvents="none">
+                <line
+                  x1={x}
+                  y1={padding.top + chartHeight}
+                  x2={x}
+                  y2={padding.top + chartHeight + 4}
+                  stroke="#cbd5e1"
+                  strokeWidth="1"
+                />
+                <text
+                  x={x}
+                  y={padding.top + chartHeight + 15}
+                  fill="#94a3b8"
+                  fontSize="9"
+                  fontFamily="ui-monospace, Consolas, monospace"
+                  textAnchor={textAnchor}
+                >
+                  {timeStr}
+                </text>
+              </g>
+            );
+          })}
 
         {/* Area fill */}
         <path d={areaPath} fill={`url(#corp-grad-${dataKey})`} />
@@ -540,6 +584,40 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
           );
         })}
 
+        {/* X-axis time ticks */}
+        {dataPoints.length > 1 &&
+          [0, 0.25, 0.5, 0.75, 1].map((pct, idx) => {
+            const dataIdx = Math.min(
+              dataPoints.length - 1,
+              Math.floor(pct * (dataPoints.length - 1))
+            );
+            const x = getX(dataIdx);
+            const timeStr = formatTime(dataPoints[dataIdx].timestamp, dataIdx);
+            const textAnchor = idx === 0 ? 'start' : idx === 4 ? 'end' : 'middle';
+            return (
+              <g key={`x-tick-dual-${pct}`} pointerEvents="none">
+                <line
+                  x1={x}
+                  y1={padding.top + chartHeight}
+                  x2={x}
+                  y2={padding.top + chartHeight + 4}
+                  stroke="#cbd5e1"
+                  strokeWidth="1"
+                />
+                <text
+                  x={x}
+                  y={padding.top + chartHeight + 15}
+                  fill="#94a3b8"
+                  fontSize="9"
+                  fontFamily="ui-monospace, Consolas, monospace"
+                  textAnchor={textAnchor}
+                >
+                  {timeStr}
+                </text>
+              </g>
+            );
+          })}
+
         {/* Line 1: Tank 1 */}
         <polyline
           fill="none"
@@ -734,182 +812,588 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
   isPlayback = false,
   playbackIndex,
   onSeek,
+  onStartPlayback,
 }) => {
   const [activeTab, setActiveTab] = useState<'all' | 't1' | 't2' | 'pressure' | 'flow'>('all');
+  const [viewMode, setViewMode] = useState<'live' | 'history'>('live');
+  const [historicalData, setHistoricalData] = useState<TelemetryData[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(false);
+  const [historyLimit, setHistoryLimit] = useState<number>(150);
+  const [showCustomFilter, setShowCustomFilter] = useState<boolean>(false);
+  const [customStart, setCustomStart] = useState<string>('');
+  const [customEnd, setCustomEnd] = useState<string>('');
 
-  const dataPoints = isPlayback ? history : history.slice(-40);
+  const fetchHistoricalRecords = async (limit: number, start?: string, end?: string) => {
+    setIsLoadingHistory(true);
+    try {
+      let url = '';
+      if (start || end) {
+        url = `/api/history/query?order=ASC&limit=${limit}`;
+        if (start) url += `&start_time=${encodeURIComponent(start)}`;
+        if (end) url += `&end_time=${encodeURIComponent(end)}`;
+      } else {
+        url = `/api/history/query?order=DESC&limit=${limit}`;
+      }
+
+      const res = await fetch(url);
+      if (res.ok) {
+        const json = await res.json();
+        let records: TelemetryData[] = json.records || [];
+        if (!start && !end) {
+          records = [...records].reverse();
+        }
+        setHistoricalData(records);
+      }
+    } catch (e) {
+      console.error('Failed to query historical data from SQLite:', e);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  const handleSwitchToHistory = () => {
+    setViewMode('history');
+    if (historicalData.length === 0) {
+      fetchHistoricalRecords(historyLimit);
+    }
+  };
+
+  const dataPoints = isPlayback
+    ? history
+    : viewMode === 'history'
+    ? historicalData
+    : history.slice(-40);
+
+  const stats = useMemo(() => {
+    const dataset = isPlayback ? history : (viewMode === 'history' ? historicalData : null);
+    if (!dataset || dataset.length === 0) return null;
+
+    let minT1 = Infinity, maxT1 = -Infinity, sumT1 = 0;
+    let minT2 = Infinity, maxT2 = -Infinity, sumT2 = 0;
+    let minP = Infinity, maxP = -Infinity, sumP = 0;
+    let minF = Infinity, maxF = -Infinity, sumF = 0;
+
+    for (const d of dataset) {
+      const t1 = d.temp_tank1 ?? d.temperature ?? 0;
+      const t2 = d.temp_tank2 ?? d.temperature ?? 0;
+      const p = d.pressure ?? 0;
+      const f = d.flow_rate ?? 0;
+
+      if (t1 < minT1) minT1 = t1;
+      if (t1 > maxT1) maxT1 = t1;
+      sumT1 += t1;
+
+      if (t2 < minT2) minT2 = t2;
+      if (t2 > maxT2) maxT2 = t2;
+      sumT2 += t2;
+
+      if (p < minP) minP = p;
+      if (p > maxP) maxP = p;
+      sumP += p;
+
+      if (f < minF) minF = f;
+      if (f > maxF) maxF = f;
+      sumF += f;
+    }
+
+    const count = dataset.length;
+    return {
+      count,
+      startTime: dataset[0].timestamp,
+      endTime: dataset[count - 1].timestamp,
+      t1: { min: minT1, max: maxT1, avg: sumT1 / count },
+      t2: { min: minT2, max: maxT2, avg: sumT2 / count },
+      pressure: { min: minP, max: maxP, avg: sumP / count },
+      flow: { min: minF, max: maxF, avg: sumF / count },
+    };
+  }, [historicalData, history, isPlayback, viewMode]);
+
   const width = 800;
   const height = 180;
   const padding = { top: 20, right: 30, bottom: 30, left: 45 };
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 md:p-6 transition-all duration-200">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+      {/* Top Header: Title, Mode Toggles, and Channel Tabs */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 border border-blue-200 flex items-center justify-center">
-            <TrendingUp className="w-4 h-4" />
+          <div
+            className={`w-9 h-9 rounded-lg flex items-center justify-center border transition-colors ${
+              isPlayback
+                ? 'bg-amber-50 text-amber-600 border-amber-200'
+                : viewMode === 'history'
+                ? 'bg-indigo-50 text-indigo-600 border-indigo-200'
+                : 'bg-blue-50 text-blue-600 border-blue-200'
+            }`}
+          >
+            {isPlayback ? (
+              <History className="w-5 h-5" />
+            ) : viewMode === 'history' ? (
+              <Database className="w-5 h-5" />
+            ) : (
+              <TrendingUp className="w-5 h-5" />
+            )}
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h3 className="text-base font-semibold tracking-tight text-gray-900">
-                {isPlayback ? '历史趋势回放波形' : '实时趋势监控'}
+                {isPlayback
+                  ? '历史趋势时序回放波形'
+                  : viewMode === 'history'
+                  ? '历史记录趋势分析 (SQLite)'
+                  : '实时运行趋势监控'}
               </h3>
               {isPlayback && (
                 <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-200">
-                  回放时序 · 可点击折线跳转
+                  时序推演 · 点击折线跳转
+                </span>
+              )}
+              {!isPlayback && viewMode === 'history' && (
+                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 text-indigo-800 border border-indigo-200">
+                  SQLite 持久化数据
+                </span>
+              )}
+              {!isPlayback && viewMode === 'live' && (
+                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  ● 实时刷新
                 </span>
               )}
             </div>
             <p className="text-xs text-gray-500 font-normal">
-              Dual-Tank Temperature, Pipe Pressure & Flow Waveforms
+              {isPlayback
+                ? '历史切片数据流推演 · 支持拖拽进度条与折线定点跳转'
+                : viewMode === 'history'
+                ? '基于 SQLite 数据库历史数据直接绘制趋势曲线，支持区间缩放与统计'
+                : '双水槽水温、管道压力与循环流量动态时序波形 (最近40帧)'}
             </p>
           </div>
         </div>
 
-        {/* Tab switchers */}
-        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 flex-wrap">
-          <button
-            className={`px-3 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
-              activeTab === 'all'
-                ? 'bg-white text-blue-600 shadow-xs'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-            onClick={() => setActiveTab('all')}
-          >
-            综合视图
-          </button>
-          <button
-            className={`px-3 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
-              activeTab === 't1'
-                ? 'bg-white text-blue-600 shadow-xs'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-            onClick={() => setActiveTab('t1')}
-          >
-            水槽1水温
-          </button>
-          <button
-            className={`px-3 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
-              activeTab === 't2'
-                ? 'bg-white text-blue-600 shadow-xs'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-            onClick={() => setActiveTab('t2')}
-          >
-            水槽2水温
-          </button>
-          <button
-            className={`px-3 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
-              activeTab === 'pressure'
-                ? 'bg-white text-blue-600 shadow-xs'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-            onClick={() => setActiveTab('pressure')}
-          >
-            管道压力
-          </button>
-          <button
-            className={`px-3 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
-              activeTab === 'flow'
-                ? 'bg-white text-blue-600 shadow-xs'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-            onClick={() => setActiveTab('flow')}
-          >
-            循环流量
-          </button>
+        {/* Action switchers: Mode Toggle & Channel Tabs */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* View Mode Toggle (Live vs History) */}
+          {!isPlayback && (
+            <div className="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200">
+              <button
+                className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
+                  viewMode === 'live'
+                    ? 'bg-white text-blue-600 shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+                onClick={() => setViewMode('live')}
+              >
+                <TrendingUp className="w-3.5 h-3.5" />
+                实时动态
+              </button>
+              <button
+                className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
+                  viewMode === 'history'
+                    ? 'bg-white text-indigo-600 shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+                onClick={handleSwitchToHistory}
+              >
+                <Database className="w-3.5 h-3.5" />
+                历史记录趋势
+              </button>
+            </div>
+          )}
+
+          {/* Channel Tabs */}
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 flex-wrap">
+            <button
+              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
+                activeTab === 'all'
+                  ? 'bg-white text-blue-600 shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+              onClick={() => setActiveTab('all')}
+            >
+              综合视图
+            </button>
+            <button
+              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
+                activeTab === 't1'
+                  ? 'bg-white text-amber-600 shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+              onClick={() => setActiveTab('t1')}
+            >
+              水槽1水温
+            </button>
+            <button
+              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
+                activeTab === 't2'
+                  ? 'bg-white text-orange-600 shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+              onClick={() => setActiveTab('t2')}
+            >
+              水槽2水温
+            </button>
+            <button
+              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
+                activeTab === 'pressure'
+                  ? 'bg-white text-sky-600 shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+              onClick={() => setActiveTab('pressure')}
+            >
+              管道压力
+            </button>
+            <button
+              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
+                activeTab === 'flow'
+                  ? 'bg-white text-emerald-600 shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+              onClick={() => setActiveTab('flow')}
+            >
+              循环流量
+            </button>
+          </div>
         </div>
       </div>
 
-      <div
-        className={`grid gap-4 ${
-          activeTab === 'all'
-            ? 'grid-cols-1 md:grid-cols-3'
-            : 'grid-cols-1'
-        }`}
-      >
-        {activeTab === 'all' && (
-          <DualTempChartItem
-            dataPoints={dataPoints}
-            width={width}
-            height={height}
-            padding={padding}
-            isPlayback={isPlayback}
-            playbackIndex={playbackIndex}
-            onSeek={onSeek}
-          />
-        )}
-        {activeTab === 't1' && (
-          <SingleChartItem
-            dataKey="temp_tank1"
-            color="#d97706"
-            unit="°C"
-            title="水槽1水温趋势 (°C)"
-            minVal={20}
-            maxVal={80}
-            dataPoints={dataPoints}
-            width={width}
-            height={height}
-            padding={padding}
-            isPlayback={isPlayback}
-            playbackIndex={playbackIndex}
-            onSeek={onSeek}
-          />
-        )}
-        {activeTab === 't2' && (
-          <SingleChartItem
-            dataKey="temp_tank2"
-            color="#ea580c"
-            unit="°C"
-            title="水槽2水温趋势 (°C)"
-            minVal={20}
-            maxVal={80}
-            dataPoints={dataPoints}
-            width={width}
-            height={height}
-            padding={padding}
-            isPlayback={isPlayback}
-            playbackIndex={playbackIndex}
-            onSeek={onSeek}
-          />
-        )}
+      {/* Historical Query Toolbar (Only in history mode and not in playback) */}
+      {!isPlayback && viewMode === 'history' && (
+        <div className="mb-3.5 bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2.5">
+          {/* Presets */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-xs text-slate-600 font-medium flex items-center gap-1 mr-1">
+              <Clock className="w-3.5 h-3.5 text-slate-500" /> 历史快选:
+            </span>
+            {[50, 150, 300, 500].map((num) => (
+              <button
+                key={num}
+                onClick={() => {
+                  setHistoryLimit(num);
+                  fetchHistoricalRecords(num);
+                }}
+                className={`px-2.5 py-1 text-xs rounded font-medium border transition-colors ${
+                  historyLimit === num && !showCustomFilter
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                近{num}条
+              </button>
+            ))}
+            <button
+              onClick={() => setShowCustomFilter((prev) => !prev)}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded font-medium border transition-colors ${
+                showCustomFilter
+                  ? 'bg-indigo-50 text-indigo-700 border-indigo-300'
+                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              自定义时间
+            </button>
+          </div>
 
-        {(activeTab === 'all' || activeTab === 'pressure') && (
-          <SingleChartItem
-            dataKey="pressure"
-            color="#0284c7"
-            unit="MPa"
-            title="管道压力趋势 (MPa)"
-            minVal={0.0}
-            maxVal={0.8}
-            dataPoints={dataPoints}
-            width={width}
-            height={height}
-            padding={padding}
-            isPlayback={isPlayback}
-            playbackIndex={playbackIndex}
-            onSeek={onSeek}
-          />
-        )}
+          {/* Action buttons */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() =>
+                fetchHistoricalRecords(
+                  historyLimit,
+                  customStart || undefined,
+                  customEnd || undefined
+                )
+              }
+              disabled={isLoadingHistory}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw
+                className={`w-3.5 h-3.5 ${
+                  isLoadingHistory ? 'animate-spin text-indigo-600' : ''
+                }`}
+              />
+              刷新数据
+            </button>
+            <button
+              onClick={() => {
+                let exportUrl = '/api/history/export';
+                const params = new URLSearchParams();
+                if (customStart) params.append('start_time', customStart);
+                if (customEnd) params.append('end_time', customEnd);
+                if (params.toString()) exportUrl += `?${params.toString()}`;
+                window.open(exportUrl, '_blank');
+              }}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 transition-colors"
+            >
+              <Download className="w-3.5 h-3.5" />
+              导出CSV
+            </button>
+            {onStartPlayback && historicalData.length > 0 && (
+              <button
+                onClick={() => onStartPlayback(historicalData)}
+                className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium rounded bg-indigo-600 hover:bg-indigo-700 text-white transition-colors shadow-xs"
+              >
+                <Play className="w-3.5 h-3.5 fill-current" />
+                以当前历史启动回放
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
-        {(activeTab === 'all' || activeTab === 'flow') && (
-          <SingleChartItem
-            dataKey="flow_rate"
-            color="#059669"
-            unit="L/min"
-            title="槽间循环流量趋势 (L/min)"
-            minVal={0.0}
-            maxVal={35}
-            dataPoints={dataPoints}
-            width={width}
-            height={height}
-            padding={padding}
-            isPlayback={isPlayback}
-            playbackIndex={playbackIndex}
-            onSeek={onSeek}
-          />
-        )}
-      </div>
+      {/* Custom Time Range Filter Accordion */}
+      {!isPlayback && viewMode === 'history' && showCustomFilter && (
+        <div className="mb-3.5 bg-indigo-50/50 border border-indigo-100 rounded-xl p-3 text-xs">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-1.5">
+              <label className="text-slate-600 font-medium">起止时间:</label>
+              <input
+                type="datetime-local"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+                className="bg-white border border-slate-300 rounded px-2 py-1 text-xs text-slate-800 focus:outline-indigo-500"
+              />
+              <span className="text-slate-400">至</span>
+              <input
+                type="datetime-local"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                className="bg-white border border-slate-300 rounded px-2 py-1 text-xs text-slate-800 focus:outline-indigo-500"
+              />
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <label className="text-slate-600 font-medium">数量上限:</label>
+              <select
+                value={historyLimit}
+                onChange={(e) => setHistoryLimit(Number(e.target.value))}
+                className="bg-white border border-slate-300 rounded px-2 py-1 text-xs text-slate-800 focus:outline-indigo-500"
+              >
+                <option value={50}>50条</option>
+                <option value={150}>150条</option>
+                <option value={300}>300条</option>
+                <option value={500}>500条</option>
+                <option value={1000}>1000条</option>
+              </select>
+            </div>
+
+            <button
+              onClick={() =>
+                fetchHistoricalRecords(
+                  historyLimit,
+                  customStart || undefined,
+                  customEnd || undefined
+                )
+              }
+              className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium text-xs transition-colors shadow-xs"
+            >
+              查询历史趋势
+            </button>
+            <button
+              onClick={() => {
+                setCustomStart('');
+                setCustomEnd('');
+                fetchHistoricalRecords(historyLimit);
+              }}
+              className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 rounded font-medium text-xs transition-colors"
+            >
+              重置
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Historical Statistics Ribbon */}
+      {(viewMode === 'history' || isPlayback) && stats && (
+        <div className="mb-4 bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-700">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2 pb-1.5 border-b border-slate-200/80">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-slate-900 flex items-center gap-1.5">
+                <Database className="w-3.5 h-3.5 text-indigo-600" />
+                历史时序跨度 ({stats.count} 帧):
+              </span>
+              <span className="font-mono text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">
+                {formatTime(stats.startTime)} ~ {formatTime(stats.endTime)}
+              </span>
+            </div>
+            <span className="text-[11px] text-slate-500">
+              数据源: SQLite 嵌入式数据库
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            {/* 水槽1 */}
+            <div className="bg-white p-2 rounded-lg border border-amber-200/80">
+              <div className="flex items-center justify-between text-[11px] text-amber-800 font-medium mb-1">
+                <span>水槽1水温</span>
+                <span className="font-mono font-semibold">
+                  均 {stats.t1.avg.toFixed(1)}°C
+                </span>
+              </div>
+              <div className="text-[10px] text-slate-500 font-mono flex justify-between">
+                <span>低: {stats.t1.min.toFixed(1)}°C</span>
+                <span>高: {stats.t1.max.toFixed(1)}°C</span>
+              </div>
+            </div>
+
+            {/* 水槽2 */}
+            <div className="bg-white p-2 rounded-lg border border-orange-200/80">
+              <div className="flex items-center justify-between text-[11px] text-orange-800 font-medium mb-1">
+                <span>水槽2水温</span>
+                <span className="font-mono font-semibold">
+                  均 {stats.t2.avg.toFixed(1)}°C
+                </span>
+              </div>
+              <div className="text-[10px] text-slate-500 font-mono flex justify-between">
+                <span>低: {stats.t2.min.toFixed(1)}°C</span>
+                <span>高: {stats.t2.max.toFixed(1)}°C</span>
+              </div>
+            </div>
+
+            {/* 管道压力 */}
+            <div className="bg-white p-2 rounded-lg border border-sky-200/80">
+              <div className="flex items-center justify-between text-[11px] text-sky-800 font-medium mb-1">
+                <span>管道压力</span>
+                <span className="font-mono font-semibold">
+                  均 {stats.pressure.avg.toFixed(2)} MPa
+                </span>
+              </div>
+              <div className="text-[10px] text-slate-500 font-mono flex justify-between">
+                <span>低: {stats.pressure.min.toFixed(2)}</span>
+                <span>高: {stats.pressure.max.toFixed(2)}</span>
+              </div>
+            </div>
+
+            {/* 循环流量 */}
+            <div className="bg-white p-2 rounded-lg border border-emerald-200/80">
+              <div className="flex items-center justify-between text-[11px] text-emerald-800 font-medium mb-1">
+                <span>循环流量</span>
+                <span className="font-mono font-semibold">
+                  均 {stats.flow.avg.toFixed(1)} L/min
+                </span>
+              </div>
+              <div className="text-[10px] text-slate-500 font-mono flex justify-between">
+                <span>低: {stats.flow.min.toFixed(1)}</span>
+                <span>高: {stats.flow.max.toFixed(1)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Chart Canvas Area */}
+      {isLoadingHistory && dataPoints.length === 0 ? (
+        <div className="py-16 text-center text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-300">
+          <RefreshCw className="w-6 h-6 animate-spin text-indigo-600 mx-auto mb-2" />
+          <p className="text-sm font-medium">正在从 SQLite 载入历史传感器时序曲线...</p>
+        </div>
+      ) : dataPoints.length === 0 ? (
+        <div className="py-16 text-center text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-300">
+          <Database className="w-6 h-6 text-slate-400 mx-auto mb-2" />
+          <p className="text-sm font-medium">暂无匹配的历史时序记录</p>
+          <p className="text-xs text-slate-400 mt-1">
+            请尝试调整起止时间或选择【近150条】预设
+          </p>
+          <button
+            onClick={() => {
+              setCustomStart('');
+              setCustomEnd('');
+              fetchHistoricalRecords(150);
+            }}
+            className="mt-3 px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-medium"
+          >
+            载入最近150条历史记录
+          </button>
+        </div>
+      ) : (
+        <div
+          className={`grid gap-4 ${
+            activeTab === 'all'
+              ? 'grid-cols-1 md:grid-cols-3'
+              : 'grid-cols-1'
+          }`}
+        >
+          {activeTab === 'all' && (
+            <DualTempChartItem
+              dataPoints={dataPoints}
+              width={width}
+              height={height}
+              padding={padding}
+              isPlayback={isPlayback}
+              playbackIndex={playbackIndex}
+              onSeek={onSeek}
+            />
+          )}
+          {activeTab === 't1' && (
+            <SingleChartItem
+              dataKey="temp_tank1"
+              color="#d97706"
+              unit="°C"
+              title="水槽1水温趋势 (°C)"
+              minVal={20}
+              maxVal={80}
+              dataPoints={dataPoints}
+              width={width}
+              height={height}
+              padding={padding}
+              isPlayback={isPlayback}
+              playbackIndex={playbackIndex}
+              onSeek={onSeek}
+            />
+          )}
+          {activeTab === 't2' && (
+            <SingleChartItem
+              dataKey="temp_tank2"
+              color="#ea580c"
+              unit="°C"
+              title="水槽2水温趋势 (°C)"
+              minVal={20}
+              maxVal={80}
+              dataPoints={dataPoints}
+              width={width}
+              height={height}
+              padding={padding}
+              isPlayback={isPlayback}
+              playbackIndex={playbackIndex}
+              onSeek={onSeek}
+            />
+          )}
+
+          {(activeTab === 'all' || activeTab === 'pressure') && (
+            <SingleChartItem
+              dataKey="pressure"
+              color="#0284c7"
+              unit="MPa"
+              title="管道压力趋势 (MPa)"
+              minVal={0.0}
+              maxVal={0.8}
+              dataPoints={dataPoints}
+              width={width}
+              height={height}
+              padding={padding}
+              isPlayback={isPlayback}
+              playbackIndex={playbackIndex}
+              onSeek={onSeek}
+            />
+          )}
+
+          {(activeTab === 'all' || activeTab === 'flow') && (
+            <SingleChartItem
+              dataKey="flow_rate"
+              color="#059669"
+              unit="L/min"
+              title="槽间循环流量趋势 (L/min)"
+              minVal={0.0}
+              maxVal={35}
+              dataPoints={dataPoints}
+              width={width}
+              height={height}
+              padding={padding}
+              isPlayback={isPlayback}
+              playbackIndex={playbackIndex}
+              onSeek={onSeek}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 };

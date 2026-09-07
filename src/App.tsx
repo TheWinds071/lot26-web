@@ -354,6 +354,12 @@ export const App: React.FC = () => {
           isPlayback={isPlayback}
           playbackIndex={playbackIndex}
           onSeek={(index) => setPlaybackIndex(index)}
+          onStartPlayback={(records) => {
+            setPlaybackData(records);
+            setPlaybackIndex(0);
+            setIsPlayback(true);
+            setIsPlaying(true);
+          }}
         />
 
         {/* 5. Actuator Overrides & Closed-Loop Threshold Configuration */}

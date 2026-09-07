@@ -1,12 +1,16 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Calendar,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Database,
   Download,
-  History,
+  Pause,
   Play,
   RefreshCw,
+  SkipBack,
+  SkipForward,
   TrendingUp,
 } from 'lucide-react';
 import type { TelemetryData } from '../types';
@@ -16,7 +20,7 @@ interface RealtimeChartsProps {
   isPlayback?: boolean;
   playbackIndex?: number;
   onSeek?: (index: number) => void;
-  onStartPlayback?: (records: TelemetryData[]) => void;
+  onHistoricalFrameSelect?: (record: TelemetryData | null) => void;
 }
 
 const formatTime = (ts?: string, index?: number): string => {
@@ -46,8 +50,8 @@ interface SingleChartProps {
   width: number;
   height: number;
   padding: { top: number; right: number; bottom: number; left: number };
-  isPlayback?: boolean;
   playbackIndex?: number;
+  timelineIndex?: number;
   onSeek?: (index: number) => void;
 }
 
@@ -62,8 +66,8 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
   width,
   height,
   padding,
-  isPlayback = false,
   playbackIndex,
+  timelineIndex,
   onSeek,
 }) => {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
@@ -136,7 +140,15 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
     setHoverIndex(null);
   };
 
-  const activeIndex = hoverIndex !== null ? hoverIndex : null;
+  const activeTimelineIndex = playbackIndex !== undefined ? playbackIndex : timelineIndex;
+  const activeIndex =
+    hoverIndex !== null
+      ? hoverIndex
+      : activeTimelineIndex !== undefined &&
+        activeTimelineIndex >= 0 &&
+        activeTimelineIndex < dataPoints.length
+      ? activeTimelineIndex
+      : null;
   const hoveredPoint = activeIndex !== null ? dataPoints[activeIndex] : null;
   const hoveredVal =
     hoveredPoint !== null ? hoveredPoint[dataKey] ?? hoveredPoint.temperature ?? 0 : null;
@@ -174,11 +186,15 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
             style={{ backgroundColor: color }}
           ></span>
           <span className="text-xs font-semibold text-gray-800">{title}</span>
-          {hoverIndex !== null && (
+          {hoverIndex !== null ? (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-medium">
               悬停: {hoveredTime}
             </span>
-          )}
+          ) : activeTimelineIndex !== undefined && hoveredPoint ? (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 font-medium">
+              定位: {hoveredTime}
+            </span>
+          ) : null}
         </div>
         <div className="flex items-baseline gap-1">
           <span className="text-base font-bold font-mono text-gray-900 transition-colors">
@@ -281,8 +297,8 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
           points={points}
         />
 
-        {/* Latest point circle (when not hovering and not playback) */}
-        {dataPoints.length > 0 && hoverIndex === null && !isPlayback && (
+        {/* Latest point circle (when not hovering and no timeline/playback index) */}
+        {dataPoints.length > 0 && hoverIndex === null && activeTimelineIndex === undefined && (
           <circle
             cx={getX(dataPoints.length - 1)}
             cy={getY(latestVal)}
@@ -293,23 +309,23 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
           />
         )}
 
-        {/* Playback playhead line & point */}
-        {isPlayback && playbackIndex !== undefined && playbackIndex >= 0 && playbackIndex < dataPoints.length && (
+        {/* Timeline / Playback playhead line & point */}
+        {activeTimelineIndex !== undefined && activeTimelineIndex >= 0 && activeTimelineIndex < dataPoints.length && (
           <g pointerEvents="none">
             <line
-              x1={getX(playbackIndex)}
+              x1={getX(activeTimelineIndex)}
               y1={padding.top}
-              x2={getX(playbackIndex)}
+              x2={getX(activeTimelineIndex)}
               y2={padding.top + chartHeight}
-              stroke="#f59e0b"
+              stroke={color}
               strokeWidth="2"
               strokeDasharray="4 2"
             />
             <circle
-              cx={getX(playbackIndex)}
-              cy={getY(dataPoints[playbackIndex][dataKey] ?? dataPoints[playbackIndex].temperature ?? 0)}
+              cx={getX(activeTimelineIndex)}
+              cy={getY(dataPoints[activeTimelineIndex][dataKey] ?? dataPoints[activeTimelineIndex].temperature ?? 0)}
               r="5"
-              fill="#f59e0b"
+              fill={color}
               stroke="#ffffff"
               strokeWidth="2"
             />
@@ -415,8 +431,8 @@ interface DualTempChartProps {
   width: number;
   height: number;
   padding: { top: number; right: number; bottom: number; left: number };
-  isPlayback?: boolean;
   playbackIndex?: number;
+  timelineIndex?: number;
   onSeek?: (index: number) => void;
 }
 
@@ -425,8 +441,8 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
   width,
   height,
   padding,
-  isPlayback = false,
   playbackIndex,
+  timelineIndex,
   onSeek,
 }) => {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
@@ -488,7 +504,15 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
     setHoverIndex(null);
   };
 
-  const activeIndex = hoverIndex !== null ? hoverIndex : null;
+  const activeTimelineIndex = playbackIndex !== undefined ? playbackIndex : timelineIndex;
+  const activeIndex =
+    hoverIndex !== null
+      ? hoverIndex
+      : activeTimelineIndex !== undefined &&
+        activeTimelineIndex >= 0 &&
+        activeTimelineIndex < dataPoints.length
+      ? activeTimelineIndex
+      : null;
   const hoveredPoint = activeIndex !== null ? dataPoints[activeIndex] : null;
   const hovered1 =
     hoveredPoint ? hoveredPoint.temp_tank1 ?? hoveredPoint.temperature ?? 0 : latest1;
@@ -523,11 +547,15 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-3">
           <span className="text-xs font-semibold text-gray-800">双水槽温度对比</span>
-          {hoverIndex !== null && (
+          {hoverIndex !== null ? (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-medium">
               悬停: {hoveredTime}
             </span>
-          )}
+          ) : activeTimelineIndex !== undefined && hoveredPoint ? (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 font-medium">
+              定位: {hoveredTime}
+            </span>
+          ) : null}
           <span className="flex items-center gap-1 text-[11px] text-amber-700">
             <span className="w-2 h-2 rounded-full bg-amber-500"></span> 水槽1:{' '}
             {hovered1.toFixed(1)}°C
@@ -636,8 +664,8 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
           points={points2}
         />
 
-        {/* End points when not hovering and not in playback */}
-        {hoverIndex === null && !isPlayback && (
+        {/* End points when not hovering and no timeline/playback index */}
+        {hoverIndex === null && activeTimelineIndex === undefined && (
           <>
             <circle
               cx={getX(dataPoints.length - 1)}
@@ -658,29 +686,29 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
           </>
         )}
 
-        {/* Playback playhead line and dual markers */}
-        {isPlayback && playbackIndex !== undefined && playbackIndex >= 0 && playbackIndex < dataPoints.length && (
+        {/* Timeline / Playback playhead line and dual markers */}
+        {activeTimelineIndex !== undefined && activeTimelineIndex >= 0 && activeTimelineIndex < dataPoints.length && (
           <g pointerEvents="none">
             <line
-              x1={getX(playbackIndex)}
+              x1={getX(activeTimelineIndex)}
               y1={padding.top}
-              x2={getX(playbackIndex)}
+              x2={getX(activeTimelineIndex)}
               y2={padding.top + chartHeight}
-              stroke="#f59e0b"
+              stroke="#6366f1"
               strokeWidth="2"
               strokeDasharray="4 2"
             />
             <circle
-              cx={getX(playbackIndex)}
-              cy={getY(dataPoints[playbackIndex].temp_tank1 ?? dataPoints[playbackIndex].temperature ?? 0)}
+              cx={getX(activeTimelineIndex)}
+              cy={getY(dataPoints[activeTimelineIndex].temp_tank1 ?? dataPoints[activeTimelineIndex].temperature ?? 0)}
               r="5"
               fill="#f59e0b"
               stroke="#ffffff"
               strokeWidth="2"
             />
             <circle
-              cx={getX(playbackIndex)}
-              cy={getY(dataPoints[playbackIndex].temp_tank2 ?? dataPoints[playbackIndex].temperature ?? 0)}
+              cx={getX(activeTimelineIndex)}
+              cy={getY(dataPoints[activeTimelineIndex].temp_tank2 ?? dataPoints[activeTimelineIndex].temperature ?? 0)}
               r="5"
               fill="#ea580c"
               stroke="#ffffff"
@@ -812,13 +840,16 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
   isPlayback = false,
   playbackIndex,
   onSeek,
-  onStartPlayback,
+  onHistoricalFrameSelect,
 }) => {
   const [activeTab, setActiveTab] = useState<'all' | 't1' | 't2' | 'pressure' | 'flow'>('all');
   const [viewMode, setViewMode] = useState<'live' | 'history'>('live');
   const [historicalData, setHistoricalData] = useState<TelemetryData[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(false);
-  const [historyLimit, setHistoryLimit] = useState<number>(150);
+  const [historyLimit, setHistoryLimit] = useState<number>(300);
+  const [timelineIndex, setTimelineIndex] = useState<number>(0);
+  const [isPlayingTimeline, setIsPlayingTimeline] = useState<boolean>(false);
+  const [playSpeed, setPlaySpeed] = useState<number>(1);
   const [showCustomFilter, setShowCustomFilter] = useState<boolean>(false);
   const [customStart, setCustomStart] = useState<string>('');
   const [customEnd, setCustomEnd] = useState<string>('');
@@ -843,6 +874,11 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
           records = [...records].reverse();
         }
         setHistoricalData(records);
+        if (records.length > 0) {
+          const lastIdx = records.length - 1;
+          setTimelineIndex(lastIdx);
+          onHistoricalFrameSelect?.(records[lastIdx]);
+        }
       }
     } catch (e) {
       console.error('Failed to query historical data from SQLite:', e);
@@ -855,7 +891,27 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
     setViewMode('history');
     if (historicalData.length === 0) {
       fetchHistoricalRecords(historyLimit);
+    } else {
+      const idx = Math.min(timelineIndex, historicalData.length - 1);
+      onHistoricalFrameSelect?.(historicalData[idx]);
     }
+  };
+
+  const handleSwitchToLive = () => {
+    setViewMode('live');
+    setIsPlayingTimeline(false);
+    onHistoricalFrameSelect?.(null);
+  };
+
+  const handleSeek = (index: number) => {
+    setTimelineIndex(index);
+    setIsPlayingTimeline(false);
+    const target =
+      viewMode === 'history' ? historicalData[index] : isPlayback ? history[index] : null;
+    if (target) {
+      onHistoricalFrameSelect?.(target);
+    }
+    if (onSeek) onSeek(index);
   };
 
   const dataPoints = isPlayback
@@ -864,14 +920,49 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
     ? historicalData
     : history.slice(-40);
 
+  // Auto-play ticker along the historical timeline
+  useEffect(() => {
+    if (!isPlayingTimeline || dataPoints.length === 0) return;
+    const intervalMs = Math.max(50, Math.floor(1000 / playSpeed));
+    const timer = setInterval(() => {
+      setTimelineIndex((prev) => {
+        if (prev >= dataPoints.length - 1) {
+          setIsPlayingTimeline(false);
+          return prev;
+        }
+        const next = prev + 1;
+        if (viewMode === 'history' && historicalData[next]) {
+          onHistoricalFrameSelect?.(historicalData[next]);
+        }
+        return next;
+      });
+    }, intervalMs);
+    return () => clearInterval(timer);
+  }, [
+    isPlayingTimeline,
+    playSpeed,
+    dataPoints.length,
+    viewMode,
+    historicalData,
+    onHistoricalFrameSelect,
+  ]);
+
   const stats = useMemo(() => {
-    const dataset = isPlayback ? history : (viewMode === 'history' ? historicalData : null);
+    const dataset = isPlayback ? history : viewMode === 'history' ? historicalData : null;
     if (!dataset || dataset.length === 0) return null;
 
-    let minT1 = Infinity, maxT1 = -Infinity, sumT1 = 0;
-    let minT2 = Infinity, maxT2 = -Infinity, sumT2 = 0;
-    let minP = Infinity, maxP = -Infinity, sumP = 0;
-    let minF = Infinity, maxF = -Infinity, sumF = 0;
+    let minT1 = Infinity,
+      maxT1 = -Infinity,
+      sumT1 = 0;
+    let minT2 = Infinity,
+      maxT2 = -Infinity,
+      sumT2 = 0;
+    let minP = Infinity,
+      maxP = -Infinity,
+      sumP = 0;
+    let minF = Infinity,
+      maxF = -Infinity,
+      sumF = 0;
 
     for (const d of dataset) {
       const t1 = d.temp_tank1 ?? d.temperature ?? 0;
@@ -908,6 +999,18 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
     };
   }, [historicalData, history, isPlayback, viewMode]);
 
+  const currentFrame =
+    dataPoints.length > 0 && timelineIndex >= 0 && timelineIndex < dataPoints.length
+      ? dataPoints[timelineIndex]
+      : null;
+  const currentTimeStr = currentFrame
+    ? formatTime(currentFrame.timestamp, timelineIndex)
+    : '--:--:--';
+  const progressPct =
+    dataPoints.length > 1
+      ? ((timelineIndex / (dataPoints.length - 1)) * 100).toFixed(0)
+      : '100';
+
   const width = 800;
   const height = 180;
   const padding = { top: 20, right: 30, bottom: 30, left: 45 };
@@ -927,7 +1030,7 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
             }`}
           >
             {isPlayback ? (
-              <History className="w-5 h-5" />
+              <Clock className="w-5 h-5" />
             ) : viewMode === 'history' ? (
               <Database className="w-5 h-5" />
             ) : (
@@ -961,9 +1064,9 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
             </div>
             <p className="text-xs text-gray-500 font-normal">
               {isPlayback
-                ? '历史切片数据流推演 · 支持拖拽进度条与折线定点跳转'
+                ? '历史切片数据流推演 · 支持拖拽时间轴与折线定点跳转'
                 : viewMode === 'history'
-                ? '基于 SQLite 数据库历史数据直接绘制趋势曲线，支持区间缩放与统计'
+                ? '基于 SQLite 数据库历史数据直接绘制趋势曲线，支持时间轴拖动与播放推演'
                 : '双水槽水温、管道压力与循环流量动态时序波形 (最近40帧)'}
             </p>
           </div>
@@ -980,7 +1083,7 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
                     ? 'bg-white text-blue-600 shadow-xs'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
-                onClick={() => setViewMode('live')}
+                onClick={handleSwitchToLive}
               >
                 <TrendingUp className="w-3.5 h-3.5" />
                 实时动态
@@ -1055,86 +1158,203 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
         </div>
       </div>
 
-      {/* Historical Query Toolbar (Only in history mode and not in playback) */}
+      {/* Draggable Timeline Toolbar (In history mode and not in playback) */}
       {!isPlayback && viewMode === 'history' && (
-        <div className="mb-3.5 bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2.5">
-          {/* Presets */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-xs text-slate-600 font-medium flex items-center gap-1 mr-1">
-              <Clock className="w-3.5 h-3.5 text-slate-500" /> 历史快选:
-            </span>
-            {[50, 150, 300, 500].map((num) => (
+        <div className="mb-3.5 bg-slate-50 border border-slate-200 rounded-xl p-3.5 shadow-xs transition-all">
+          {/* Row 1: Time position & Playback step controls */}
+          <div className="flex flex-wrap items-center justify-between gap-2.5 mb-2">
+            {/* Left: Time display & Frame position */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-semibold text-slate-800 flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5 text-indigo-600" />
+                时间轴拖动定位:
+              </span>
+              <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded shadow-2xs">
+                {currentTimeStr}
+              </span>
+              <span className="text-[11px] text-slate-500 font-mono">
+                [ 第 {dataPoints.length > 0 ? timelineIndex + 1 : 0} / {dataPoints.length} 帧 · {progressPct}% ]
+              </span>
+
+              {/* Instant sensor readings at timeline position */}
+              {currentFrame && (
+                <div className="hidden sm:flex items-center gap-1.5 text-[11px] font-mono ml-1">
+                  <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
+                    T1: {(currentFrame.temp_tank1 ?? currentFrame.temperature ?? 0).toFixed(1)}°C
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded bg-orange-50 text-orange-800 border border-orange-200">
+                    T2: {(currentFrame.temp_tank2 ?? currentFrame.temperature ?? 0).toFixed(1)}°C
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200">
+                    P: {(currentFrame.pressure ?? 0).toFixed(2)}MPa
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                    Q: {(currentFrame.flow_rate ?? 0).toFixed(1)}L/m
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Right: Step buttons and Play/Pause */}
+            <div className="flex items-center gap-1">
               <button
-                key={num}
-                onClick={() => {
-                  setHistoryLimit(num);
-                  fetchHistoricalRecords(num);
-                }}
-                className={`px-2.5 py-1 text-xs rounded font-medium border transition-colors ${
-                  historyLimit === num && !showCustomFilter
-                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                onClick={() => handleSeek(0)}
+                title="跳转至最早记录"
+                disabled={dataPoints.length === 0}
+                className="p-1 rounded bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 disabled:opacity-40 transition-colors"
+              >
+                <SkipBack className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => handleSeek(Math.max(0, timelineIndex - 1))}
+                title="单步后退1帧"
+                disabled={dataPoints.length === 0}
+                className="p-1 rounded bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 disabled:opacity-40 transition-colors"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => setIsPlayingTimeline((prev) => !prev)}
+                disabled={dataPoints.length === 0}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs disabled:opacity-40 transition-colors"
+              >
+                {isPlayingTimeline ? (
+                  <Pause className="w-3.5 h-3.5 fill-current" />
+                ) : (
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                )}
+                <span>{isPlayingTimeline ? '暂停' : '播放'}</span>
+              </button>
+              <button
+                onClick={() => handleSeek(Math.min(dataPoints.length - 1, timelineIndex + 1))}
+                title="单步前进1帧"
+                disabled={dataPoints.length === 0}
+                className="p-1 rounded bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 disabled:opacity-40 transition-colors"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => handleSeek(Math.max(0, dataPoints.length - 1))}
+                title="跳转至最新记录"
+                disabled={dataPoints.length === 0}
+                className="p-1 rounded bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 disabled:opacity-40 transition-colors"
+              >
+                <SkipForward className="w-3.5 h-3.5" />
+              </button>
+
+              {/* Speed selector */}
+              <div className="flex items-center bg-white rounded border border-slate-200 p-0.5 text-[11px] ml-1">
+                {[1, 2, 5].map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setPlaySpeed(s)}
+                    className={`px-1.5 py-0.5 rounded font-medium transition-colors ${
+                      playSpeed === s
+                        ? 'bg-indigo-600 text-white'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    {s}x
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Row 2: Draggable Timeline Range Input */}
+          <div className="relative py-1">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-mono text-slate-500 whitespace-nowrap min-w-[50px]">
+                {dataPoints.length > 0 ? formatTime(dataPoints[0].timestamp, 0) : '--:--:--'}
+              </span>
+              <div className="relative flex-1 flex items-center">
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.max(0, dataPoints.length - 1)}
+                  value={timelineIndex}
+                  onChange={(e) => {
+                    const idx = Number(e.target.value);
+                    handleSeek(idx);
+                  }}
+                  className="w-full h-2.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600 focus:outline-none"
+                />
+              </div>
+              <span className="text-[11px] font-mono text-slate-500 whitespace-nowrap min-w-[50px] text-right">
+                {dataPoints.length > 0
+                  ? formatTime(dataPoints[dataPoints.length - 1].timestamp, dataPoints.length - 1)
+                  : '--:--:--'}
+              </span>
+            </div>
+          </div>
+
+          {/* Row 3: History span selector, custom time, refresh, export */}
+          <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 mt-1 border-t border-slate-200/80 text-xs">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-slate-600 font-medium">采样跨度:</span>
+              {[50, 150, 300, 500, 1000].map((num) => (
+                <button
+                  key={num}
+                  onClick={() => {
+                    setHistoryLimit(num);
+                    fetchHistoricalRecords(num);
+                  }}
+                  className={`px-2 py-0.5 text-xs rounded border transition-colors ${
+                    historyLimit === num && !showCustomFilter
+                      ? 'bg-indigo-600 text-white border-indigo-600 font-semibold shadow-2xs'
+                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  {num}条
+                </button>
+              ))}
+              <button
+                onClick={() => setShowCustomFilter((prev) => !prev)}
+                className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded border transition-colors ${
+                  showCustomFilter
+                    ? 'bg-indigo-50 text-indigo-700 border-indigo-300'
                     : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
                 }`}
               >
-                近{num}条
+                <Calendar className="w-3 h-3" />
+                自定义时间段
               </button>
-            ))}
-            <button
-              onClick={() => setShowCustomFilter((prev) => !prev)}
-              className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded font-medium border transition-colors ${
-                showCustomFilter
-                  ? 'bg-indigo-50 text-indigo-700 border-indigo-300'
-                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-              }`}
-            >
-              <Calendar className="w-3.5 h-3.5" />
-              自定义时间
-            </button>
-          </div>
+            </div>
 
-          {/* Action buttons */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() =>
-                fetchHistoricalRecords(
-                  historyLimit,
-                  customStart || undefined,
-                  customEnd || undefined
-                )
-              }
-              disabled={isLoadingHistory}
-              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-50"
-            >
-              <RefreshCw
-                className={`w-3.5 h-3.5 ${
-                  isLoadingHistory ? 'animate-spin text-indigo-600' : ''
-                }`}
-              />
-              刷新数据
-            </button>
-            <button
-              onClick={() => {
-                let exportUrl = '/api/history/export';
-                const params = new URLSearchParams();
-                if (customStart) params.append('start_time', customStart);
-                if (customEnd) params.append('end_time', customEnd);
-                if (params.toString()) exportUrl += `?${params.toString()}`;
-                window.open(exportUrl, '_blank');
-              }}
-              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 transition-colors"
-            >
-              <Download className="w-3.5 h-3.5" />
-              导出CSV
-            </button>
-            {onStartPlayback && historicalData.length > 0 && (
+            <div className="flex items-center gap-2">
               <button
-                onClick={() => onStartPlayback(historicalData)}
-                className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium rounded bg-indigo-600 hover:bg-indigo-700 text-white transition-colors shadow-xs"
+                onClick={() =>
+                  fetchHistoricalRecords(
+                    historyLimit,
+                    customStart || undefined,
+                    customEnd || undefined
+                  )
+                }
+                disabled={isLoadingHistory}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-50"
               >
-                <Play className="w-3.5 h-3.5 fill-current" />
-                以当前历史启动回放
+                <RefreshCw
+                  className={`w-3.5 h-3.5 ${
+                    isLoadingHistory ? 'animate-spin text-indigo-600' : ''
+                  }`}
+                />
+                刷新数据
               </button>
-            )}
+              <button
+                onClick={() => {
+                  let exportUrl = '/api/history/export';
+                  const params = new URLSearchParams();
+                  if (customStart) params.append('start_time', customStart);
+                  if (customEnd) params.append('end_time', customEnd);
+                  if (params.toString()) exportUrl += `?${params.toString()}`;
+                  window.open(exportUrl, '_blank');
+                }}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 transition-colors"
+              >
+                <Download className="w-3.5 h-3.5" />
+                导出CSV
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1290,17 +1510,17 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
           <Database className="w-6 h-6 text-slate-400 mx-auto mb-2" />
           <p className="text-sm font-medium">暂无匹配的历史时序记录</p>
           <p className="text-xs text-slate-400 mt-1">
-            请尝试调整起止时间或选择【近150条】预设
+            请尝试调整起止时间或选择【300条】预设
           </p>
           <button
             onClick={() => {
               setCustomStart('');
               setCustomEnd('');
-              fetchHistoricalRecords(150);
+              fetchHistoricalRecords(300);
             }}
             className="mt-3 px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-medium"
           >
-            载入最近150条历史记录
+            载入最近300条历史记录
           </button>
         </div>
       ) : (
@@ -1317,9 +1537,9 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
               width={width}
               height={height}
               padding={padding}
-              isPlayback={isPlayback}
               playbackIndex={playbackIndex}
-              onSeek={onSeek}
+              timelineIndex={viewMode === 'history' ? timelineIndex : undefined}
+              onSeek={handleSeek}
             />
           )}
           {activeTab === 't1' && (
@@ -1334,9 +1554,9 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
               width={width}
               height={height}
               padding={padding}
-              isPlayback={isPlayback}
               playbackIndex={playbackIndex}
-              onSeek={onSeek}
+              timelineIndex={viewMode === 'history' ? timelineIndex : undefined}
+              onSeek={handleSeek}
             />
           )}
           {activeTab === 't2' && (
@@ -1351,9 +1571,9 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
               width={width}
               height={height}
               padding={padding}
-              isPlayback={isPlayback}
               playbackIndex={playbackIndex}
-              onSeek={onSeek}
+              timelineIndex={viewMode === 'history' ? timelineIndex : undefined}
+              onSeek={handleSeek}
             />
           )}
 
@@ -1369,9 +1589,9 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
               width={width}
               height={height}
               padding={padding}
-              isPlayback={isPlayback}
               playbackIndex={playbackIndex}
-              onSeek={onSeek}
+              timelineIndex={viewMode === 'history' ? timelineIndex : undefined}
+              onSeek={handleSeek}
             />
           )}
 
@@ -1387,9 +1607,9 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
               width={width}
               height={height}
               padding={padding}
-              isPlayback={isPlayback}
               playbackIndex={playbackIndex}
-              onSeek={onSeek}
+              timelineIndex={viewMode === 'history' ? timelineIndex : undefined}
+              onSeek={handleSeek}
             />
           )}
         </div>

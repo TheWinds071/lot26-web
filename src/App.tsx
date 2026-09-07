@@ -5,23 +5,15 @@ import { PipelineTopology } from './components/PipelineTopology';
 import { RealtimeCharts } from './components/RealtimeCharts';
 import { ControlPanel } from './components/ControlPanel';
 import { AlarmLogs } from './components/AlarmLogs';
-import { PlaybackController } from './components/PlaybackController';
 import type { SystemStatus, TelemetryData, ThresholdConfig } from './types';
 
 export const App: React.FC = () => {
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [history, setHistory] = useState<TelemetryData[]>([]);
   const [wsConnected, setWsConnected] = useState<boolean>(false);
+  const [historicalFrame, setHistoricalFrame] = useState<TelemetryData | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
-
-  // Historical Playback States
-  const [isPlayback, setIsPlayback] = useState<boolean>(false);
-  const [playbackData, setPlaybackData] = useState<TelemetryData[]>([]);
-  const [playbackIndex, setPlaybackIndex] = useState<number>(0);
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
-  const [isPlaybackLoading, setIsPlaybackLoading] = useState<boolean>(false);
 
   // Connect to backend WebSocket
   const connectWebSocket = () => {
@@ -138,64 +130,7 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // Historical Playback Timer Ticker
-  useEffect(() => {
-    if (!isPlayback || !isPlaying || playbackData.length === 0) return;
-    const intervalTime = Math.max(50, Math.floor(1000 / playbackSpeed));
-    const timer = setInterval(() => {
-      setPlaybackIndex((prev) => {
-        if (prev >= playbackData.length - 1) {
-          setIsPlaying(false);
-          return prev;
-        }
-        return prev + 1;
-      });
-    }, intervalTime);
-    return () => clearInterval(timer);
-  }, [isPlayback, isPlaying, playbackSpeed, playbackData.length]);
 
-  const fetchPlaybackData = async (
-    limit: number = 200,
-    startTime?: string,
-    endTime?: string
-  ) => {
-    setIsPlaybackLoading(true);
-    try {
-      let url = `/api/history/query?order=ASC&limit=${limit}`;
-      if (startTime) url += `&start_time=${encodeURIComponent(startTime)}`;
-      if (endTime) url += `&end_time=${encodeURIComponent(endTime)}`;
-
-      const res = await fetch(url);
-      if (res.ok) {
-        const json = await res.json();
-        const records: TelemetryData[] = json.records || [];
-        setPlaybackData(records);
-        setPlaybackIndex(0);
-        setIsPlaying(false);
-        setIsPlayback(true);
-      }
-    } catch (e) {
-      console.error('Failed to load playback data from SQLite:', e);
-    } finally {
-      setIsPlaybackLoading(false);
-    }
-  };
-
-  const handleTogglePlayback = () => {
-    if (isPlayback) {
-      setIsPlayback(false);
-      setIsPlaying(false);
-    } else {
-      setIsPlayback(true);
-      if (playbackData.length === 0) {
-        fetchPlaybackData(200);
-      }
-    }
-  };
-
-  const handleExportCsv = () => {
-    window.open('/api/history/export', '_blank');
-  };
 
   const sendWsMessage = (msg: object) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -286,53 +221,16 @@ export const App: React.FC = () => {
     }
   };
 
-  const currentTelemetry = isPlayback
-    ? playbackData[playbackIndex] || status?.telemetry
-    : status?.telemetry;
-
-  const chartsHistory = isPlayback ? playbackData : history;
+  const currentTelemetry = historicalFrame || status?.telemetry || undefined;
 
   return (
     <div className="min-h-screen bg-slate-50 text-gray-900 flex flex-col font-sans selection:bg-blue-100 selection:text-blue-700">
       <div className="max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6 flex-1">
-        {/* 1. System Header with Live Badges, Emergency Stop and Playback Toggle */}
+        {/* 1. System Header with Live Badges and Emergency Stop */}
         <Header
           status={status}
           wsConnected={wsConnected}
           onEmergencyStop={handleEmergencyStop}
-          isPlayback={isPlayback}
-          onTogglePlayback={handleTogglePlayback}
-        />
-
-        {/* Historical Playback Controller Console */}
-        <PlaybackController
-          isPlayback={isPlayback}
-          isPlaying={isPlaying}
-          speed={playbackSpeed}
-          currentIndex={playbackIndex}
-          totalFrames={playbackData.length}
-          currentRecord={playbackData[playbackIndex]}
-          playbackData={playbackData}
-          isLoading={isPlaybackLoading}
-          onTogglePlay={() => setIsPlaying((prev) => !prev)}
-          onSeek={(index) => setPlaybackIndex(index)}
-          onStep={(delta) =>
-            setPlaybackIndex((prev) =>
-              Math.max(0, Math.min(playbackData.length - 1, prev + delta))
-            )
-          }
-          onChangeSpeed={(speed) => setPlaybackSpeed(speed)}
-          onReset={() => {
-            setPlaybackIndex(0);
-            setIsPlaying(false);
-          }}
-          onExitPlayback={() => {
-            setIsPlayback(false);
-            setIsPlaying(false);
-          }}
-          onLoadPreset={(limit) => fetchPlaybackData(limit)}
-          onLoadCustomRange={(start, end, limit) => fetchPlaybackData(limit, start, end)}
-          onExportCsv={handleExportCsv}
         />
 
         {/* 2. Key Telemetry Metric Cards */}
@@ -348,18 +246,10 @@ export const App: React.FC = () => {
           deviceState={status?.device_state}
         />
 
-        {/* 4. Real-time Multi-Channel Trend Curves */}
+        {/* 4. Multi-Channel Trend Curves with Draggable Historical Timeline */}
         <RealtimeCharts
-          history={chartsHistory}
-          isPlayback={isPlayback}
-          playbackIndex={playbackIndex}
-          onSeek={(index) => setPlaybackIndex(index)}
-          onStartPlayback={(records) => {
-            setPlaybackData(records);
-            setPlaybackIndex(0);
-            setIsPlayback(true);
-            setIsPlaying(true);
-          }}
+          history={history}
+          onHistoricalFrameSelect={(record) => setHistoricalFrame(record)}
         />
 
         {/* 5. Actuator Overrides & Closed-Loop Threshold Configuration */}

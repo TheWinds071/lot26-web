@@ -1,21 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { Activity, AlertOctagon, Cpu, History, Radio, ShieldAlert, Wifi, WifiOff } from 'lucide-react';
+import { Activity, AlertOctagon, Cpu, Radio, ShieldAlert, Wifi, WifiOff } from 'lucide-react';
 import type { SystemStatus } from '../types';
 
 interface HeaderProps {
   status: SystemStatus | null;
   wsConnected: boolean;
   onEmergencyStop: (stop: boolean) => void;
-  isPlayback?: boolean;
-  onTogglePlayback?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   status,
   wsConnected,
   onEmergencyStop,
-  isPlayback = false,
-  onTogglePlayback,
 }) => {
   const [time, setTime] = useState<string>('');
 
@@ -106,20 +102,6 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="hidden lg:flex items-center px-3 py-1.5 rounded-lg bg-slate-50 border border-gray-200 text-xs font-mono text-gray-700">
           <span>{time}</span>
         </div>
-
-        {/* Historical Playback Toggle Button */}
-        <button
-          onClick={onTogglePlayback}
-          className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold shadow-xs transition-all duration-200 active:scale-[0.98] ${
-            isPlayback
-              ? 'bg-amber-500 hover:bg-amber-600 text-white ring-2 ring-amber-400 ring-offset-2'
-              : 'bg-white hover:bg-slate-50 text-gray-700 border border-gray-300'
-          }`}
-          title={isPlayback ? "点击退出历史回放，返回实时监控" : "打开 SQLite 历史时序回放控制台"}
-        >
-          <History className={`w-4 h-4 ${isPlayback ? 'animate-spin' : 'text-amber-600'}`} />
-          <span>{isPlayback ? "退出回放 (实时)" : "历史数据回放"}</span>
-        </button>
 
         {/* Emergency Stop Button */}
         <button

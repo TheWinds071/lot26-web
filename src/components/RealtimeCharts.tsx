@@ -4,6 +4,9 @@ import type { TelemetryData } from '../types';
 
 interface RealtimeChartsProps {
   history: TelemetryData[];
+  isPlayback?: boolean;
+  playbackIndex?: number;
+  onSeek?: (index: number) => void;
 }
 
 const formatTime = (ts?: string, index?: number): string => {
@@ -33,6 +36,9 @@ interface SingleChartProps {
   width: number;
   height: number;
   padding: { top: number; right: number; bottom: number; left: number };
+  isPlayback?: boolean;
+  playbackIndex?: number;
+  onSeek?: (index: number) => void;
 }
 
 const SingleChartItem: React.FC<SingleChartProps> = ({
@@ -46,6 +52,9 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
   width,
   height,
   padding,
+  isPlayback = false,
+  playbackIndex,
+  onSeek,
 }) => {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
@@ -228,8 +237,8 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
           points={points}
         />
 
-        {/* Latest point circle (when not hovering) */}
-        {dataPoints.length > 0 && hoverIndex === null && (
+        {/* Latest point circle (when not hovering and not playback) */}
+        {dataPoints.length > 0 && hoverIndex === null && !isPlayback && (
           <circle
             cx={getX(dataPoints.length - 1)}
             cy={getY(latestVal)}
@@ -240,6 +249,29 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
           />
         )}
 
+        {/* Playback playhead line & point */}
+        {isPlayback && playbackIndex !== undefined && playbackIndex >= 0 && playbackIndex < dataPoints.length && (
+          <g pointerEvents="none">
+            <line
+              x1={getX(playbackIndex)}
+              y1={padding.top}
+              x2={getX(playbackIndex)}
+              y2={padding.top + chartHeight}
+              stroke="#f59e0b"
+              strokeWidth="2"
+              strokeDasharray="4 2"
+            />
+            <circle
+              cx={getX(playbackIndex)}
+              cy={getY(dataPoints[playbackIndex][dataKey] ?? dataPoints[playbackIndex].temperature ?? 0)}
+              r="5"
+              fill="#f59e0b"
+              stroke="#ffffff"
+              strokeWidth="2"
+            />
+          </g>
+        )}
+
         {/* Interactive capture overlay */}
         <rect
           x={padding.left}
@@ -248,6 +280,16 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
           height={chartHeight}
           fill="transparent"
           className="cursor-crosshair"
+          onClick={(e) => {
+            if (!onSeek || dataPoints.length === 0) return;
+            const rect = e.currentTarget.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const svgX = (mouseX / rect.width) * width;
+            const clampedX = Math.max(padding.left, Math.min(width - padding.right, svgX));
+            const ratio = (clampedX - padding.left) / chartWidth;
+            const idx = Math.round(ratio * (dataPoints.length - 1));
+            onSeek(Math.max(0, Math.min(dataPoints.length - 1, idx)));
+          }}
         />
 
         {/* Hover elements: guide line, marker, and tooltip */}
@@ -329,6 +371,9 @@ interface DualTempChartProps {
   width: number;
   height: number;
   padding: { top: number; right: number; bottom: number; left: number };
+  isPlayback?: boolean;
+  playbackIndex?: number;
+  onSeek?: (index: number) => void;
 }
 
 const DualTempChartItem: React.FC<DualTempChartProps> = ({
@@ -336,6 +381,9 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
   width,
   height,
   padding,
+  isPlayback = false,
+  playbackIndex,
+  onSeek,
 }) => {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
@@ -510,8 +558,8 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
           points={points2}
         />
 
-        {/* End points when not hovering */}
-        {hoverIndex === null && (
+        {/* End points when not hovering and not in playback */}
+        {hoverIndex === null && !isPlayback && (
           <>
             <circle
               cx={getX(dataPoints.length - 1)}
@@ -532,6 +580,37 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
           </>
         )}
 
+        {/* Playback playhead line and dual markers */}
+        {isPlayback && playbackIndex !== undefined && playbackIndex >= 0 && playbackIndex < dataPoints.length && (
+          <g pointerEvents="none">
+            <line
+              x1={getX(playbackIndex)}
+              y1={padding.top}
+              x2={getX(playbackIndex)}
+              y2={padding.top + chartHeight}
+              stroke="#f59e0b"
+              strokeWidth="2"
+              strokeDasharray="4 2"
+            />
+            <circle
+              cx={getX(playbackIndex)}
+              cy={getY(dataPoints[playbackIndex].temp_tank1 ?? dataPoints[playbackIndex].temperature ?? 0)}
+              r="5"
+              fill="#f59e0b"
+              stroke="#ffffff"
+              strokeWidth="2"
+            />
+            <circle
+              cx={getX(playbackIndex)}
+              cy={getY(dataPoints[playbackIndex].temp_tank2 ?? dataPoints[playbackIndex].temperature ?? 0)}
+              r="5"
+              fill="#ea580c"
+              stroke="#ffffff"
+              strokeWidth="2"
+            />
+          </g>
+        )}
+
         {/* Interactive capture overlay */}
         <rect
           x={padding.left}
@@ -540,6 +619,16 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
           height={chartHeight}
           fill="transparent"
           className="cursor-crosshair"
+          onClick={(e) => {
+            if (!onSeek || dataPoints.length === 0) return;
+            const rect = e.currentTarget.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const svgX = (mouseX / rect.width) * width;
+            const clampedX = Math.max(padding.left, Math.min(width - padding.right, svgX));
+            const ratio = (clampedX - padding.left) / chartWidth;
+            const idx = Math.round(ratio * (dataPoints.length - 1));
+            onSeek(Math.max(0, Math.min(dataPoints.length - 1, idx)));
+          }}
         />
 
         {/* Hover elements: guide line, markers, and tooltip */}
@@ -640,10 +729,15 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
   );
 };
 
-export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({ history }) => {
+export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
+  history,
+  isPlayback = false,
+  playbackIndex,
+  onSeek,
+}) => {
   const [activeTab, setActiveTab] = useState<'all' | 't1' | 't2' | 'pressure' | 'flow'>('all');
 
-  const dataPoints = history.slice(-40);
+  const dataPoints = isPlayback ? history : history.slice(-40);
   const width = 800;
   const height = 180;
   const padding = { top: 20, right: 30, bottom: 30, left: 45 };
@@ -656,9 +750,16 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({ history }) => {
             <TrendingUp className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="text-base font-semibold tracking-tight text-gray-900">
-              实时趋势监控
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-semibold tracking-tight text-gray-900">
+                {isPlayback ? '历史趋势回放波形' : '实时趋势监控'}
+              </h3>
+              {isPlayback && (
+                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+                  回放时序 · 可点击折线跳转
+                </span>
+              )}
+            </div>
             <p className="text-xs text-gray-500 font-normal">
               Dual-Tank Temperature, Pipe Pressure & Flow Waveforms
             </p>
@@ -733,6 +834,9 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({ history }) => {
             width={width}
             height={height}
             padding={padding}
+            isPlayback={isPlayback}
+            playbackIndex={playbackIndex}
+            onSeek={onSeek}
           />
         )}
         {activeTab === 't1' && (
@@ -747,6 +851,9 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({ history }) => {
             width={width}
             height={height}
             padding={padding}
+            isPlayback={isPlayback}
+            playbackIndex={playbackIndex}
+            onSeek={onSeek}
           />
         )}
         {activeTab === 't2' && (
@@ -761,6 +868,9 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({ history }) => {
             width={width}
             height={height}
             padding={padding}
+            isPlayback={isPlayback}
+            playbackIndex={playbackIndex}
+            onSeek={onSeek}
           />
         )}
 
@@ -776,6 +886,9 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({ history }) => {
             width={width}
             height={height}
             padding={padding}
+            isPlayback={isPlayback}
+            playbackIndex={playbackIndex}
+            onSeek={onSeek}
           />
         )}
 
@@ -791,6 +904,9 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({ history }) => {
             width={width}
             height={height}
             padding={padding}
+            isPlayback={isPlayback}
+            playbackIndex={playbackIndex}
+            onSeek={onSeek}
           />
         )}
       </div>

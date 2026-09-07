@@ -6,6 +6,7 @@ import {
   Clock,
   Database,
   Download,
+  MoveHorizontal,
   Pause,
   Play,
   RefreshCw,
@@ -71,6 +72,7 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
   onSeek,
 }) => {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
 
   if (dataPoints.length === 0) {
     return (
@@ -110,34 +112,70 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
     dataPoints[dataPoints.length - 1].temperature ??
     0;
 
-  const handlePointerMove = (clientX: number, target: SVGSVGElement) => {
+  const getIndexFromClientX = (clientX: number, target: SVGSVGElement): number => {
     const rect = target.getBoundingClientRect();
     const mouseX = clientX - rect.left;
     const svgX = (mouseX / rect.width) * width;
-
-    if (svgX < padding.left - 15 || svgX > width - padding.right + 15) {
-      setHoverIndex(null);
-      return;
-    }
-
     const clampedX = Math.max(padding.left, Math.min(width - padding.right, svgX));
-    const ratio = (clampedX - padding.left) / chartWidth;
-    const index = Math.round(ratio * (dataPoints.length - 1));
-    setHoverIndex(Math.max(0, Math.min(dataPoints.length - 1, index)));
+    const ratio = (clampedX - padding.left) / Math.max(1, chartWidth);
+    const idx = Math.round(ratio * (dataPoints.length - 1));
+    return Math.max(0, Math.min(dataPoints.length - 1, idx));
   };
 
-  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    handlePointerMove(e.clientX, e.currentTarget);
+  const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    setIsDragging(true);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+    const idx = getIndexFromClientX(e.clientX, e.currentTarget);
+    setHoverIndex(idx);
+    if (onSeek) onSeek(idx);
   };
 
-  const handleTouchMove = (e: React.TouchEvent<SVGSVGElement>) => {
-    if (e.touches[0]) {
-      handlePointerMove(e.touches[0].clientX, e.currentTarget);
+  const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (isDragging || (e.buttons & 1) === 1) {
+      const idx = getIndexFromClientX(e.clientX, e.currentTarget);
+      setHoverIndex(idx);
+      if (onSeek) onSeek(idx);
+    } else {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const svgX = (mouseX / rect.width) * width;
+      if (svgX < padding.left - 10 || svgX > width - padding.right + 10) {
+        setHoverIndex(null);
+        return;
+      }
+      const idx = getIndexFromClientX(e.clientX, e.currentTarget);
+      setHoverIndex(idx);
     }
   };
 
-  const handleMouseLeave = () => {
+  const handlePointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
+    setIsDragging(false);
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handlePointerCancel = (e: React.PointerEvent<SVGSVGElement>) => {
+    setIsDragging(false);
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
     setHoverIndex(null);
+  };
+
+  const handlePointerLeave = () => {
+    if (!isDragging) {
+      setHoverIndex(null);
+    }
   };
 
   const activeTimelineIndex = playbackIndex !== undefined ? playbackIndex : timelineIndex;
@@ -186,7 +224,11 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
             style={{ backgroundColor: color }}
           ></span>
           <span className="text-xs font-semibold text-gray-800">{title}</span>
-          {hoverIndex !== null ? (
+          {isDragging ? (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-600 text-white font-semibold animate-pulse shadow-2xs">
+              拖动定位: {hoveredTime}
+            </span>
+          ) : hoverIndex !== null ? (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-medium">
               悬停: {hoveredTime}
             </span>
@@ -206,11 +248,18 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
 
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        className="w-full h-auto block select-none"
-        onMouseMove={handleMouseMove}
-        onMouseLeave={handleMouseLeave}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleMouseLeave}
+        className={`w-full h-auto block select-none touch-none ${
+          isDragging
+            ? 'cursor-grabbing'
+            : onSeek
+            ? 'cursor-ew-resize'
+            : 'cursor-crosshair'
+        }`}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+        onPointerLeave={handlePointerLeave}
       >
         <defs>
           <linearGradient id={`corp-grad-${dataKey}`} x1="0" y1="0" x2="0" y2="1">
@@ -310,46 +359,38 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
         )}
 
         {/* Timeline / Playback playhead line & point */}
-        {activeTimelineIndex !== undefined && activeTimelineIndex >= 0 && activeTimelineIndex < dataPoints.length && (
-          <g pointerEvents="none">
-            <line
-              x1={getX(activeTimelineIndex)}
-              y1={padding.top}
-              x2={getX(activeTimelineIndex)}
-              y2={padding.top + chartHeight}
-              stroke={color}
-              strokeWidth="2"
-              strokeDasharray="4 2"
-            />
-            <circle
-              cx={getX(activeTimelineIndex)}
-              cy={getY(dataPoints[activeTimelineIndex][dataKey] ?? dataPoints[activeTimelineIndex].temperature ?? 0)}
-              r="5"
-              fill={color}
-              stroke="#ffffff"
-              strokeWidth="2"
-            />
-          </g>
-        )}
+        {activeTimelineIndex !== undefined &&
+          activeTimelineIndex >= 0 &&
+          activeTimelineIndex < dataPoints.length &&
+          (hoverIndex === null || hoverIndex !== activeTimelineIndex) && (
+            <g pointerEvents="none">
+              <line
+                x1={getX(activeTimelineIndex)}
+                y1={padding.top}
+                x2={getX(activeTimelineIndex)}
+                y2={padding.top + chartHeight}
+                stroke={color}
+                strokeWidth="2"
+                strokeDasharray="4 2"
+              />
+              <circle
+                cx={getX(activeTimelineIndex)}
+                cy={getY(dataPoints[activeTimelineIndex][dataKey] ?? dataPoints[activeTimelineIndex].temperature ?? 0)}
+                r="5"
+                fill={color}
+                stroke="#ffffff"
+                strokeWidth="2"
+              />
+            </g>
+          )}
 
-        {/* Interactive capture overlay */}
+        {/* Full area transparent rect to guarantee pointer events on every pixel */}
         <rect
-          x={padding.left}
-          y={padding.top}
-          width={chartWidth}
-          height={chartHeight}
+          x={0}
+          y={0}
+          width={width}
+          height={height}
           fill="transparent"
-          className="cursor-crosshair"
-          onClick={(e) => {
-            if (!onSeek || dataPoints.length === 0) return;
-            const rect = e.currentTarget.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left;
-            const svgX = (mouseX / rect.width) * width;
-            const clampedX = Math.max(padding.left, Math.min(width - padding.right, svgX));
-            const ratio = (clampedX - padding.left) / chartWidth;
-            const idx = Math.round(ratio * (dataPoints.length - 1));
-            onSeek(Math.max(0, Math.min(dataPoints.length - 1, idx)));
-          }}
         />
 
         {/* Hover elements: guide line, marker, and tooltip */}
@@ -446,6 +487,7 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
   onSeek,
 }) => {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
 
   if (dataPoints.length === 0) return null;
 
@@ -474,34 +516,70 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
   const latest1 = t1Vals[t1Vals.length - 1];
   const latest2 = t2Vals[t2Vals.length - 1];
 
-  const handlePointerMove = (clientX: number, target: SVGSVGElement) => {
+  const getIndexFromClientX = (clientX: number, target: SVGSVGElement): number => {
     const rect = target.getBoundingClientRect();
     const mouseX = clientX - rect.left;
     const svgX = (mouseX / rect.width) * width;
-
-    if (svgX < padding.left - 15 || svgX > width - padding.right + 15) {
-      setHoverIndex(null);
-      return;
-    }
-
     const clampedX = Math.max(padding.left, Math.min(width - padding.right, svgX));
-    const ratio = (clampedX - padding.left) / chartWidth;
-    const index = Math.round(ratio * (dataPoints.length - 1));
-    setHoverIndex(Math.max(0, Math.min(dataPoints.length - 1, index)));
+    const ratio = (clampedX - padding.left) / Math.max(1, chartWidth);
+    const idx = Math.round(ratio * (dataPoints.length - 1));
+    return Math.max(0, Math.min(dataPoints.length - 1, idx));
   };
 
-  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    handlePointerMove(e.clientX, e.currentTarget);
+  const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    setIsDragging(true);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+    const idx = getIndexFromClientX(e.clientX, e.currentTarget);
+    setHoverIndex(idx);
+    if (onSeek) onSeek(idx);
   };
 
-  const handleTouchMove = (e: React.TouchEvent<SVGSVGElement>) => {
-    if (e.touches[0]) {
-      handlePointerMove(e.touches[0].clientX, e.currentTarget);
+  const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (isDragging || (e.buttons & 1) === 1) {
+      const idx = getIndexFromClientX(e.clientX, e.currentTarget);
+      setHoverIndex(idx);
+      if (onSeek) onSeek(idx);
+    } else {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const svgX = (mouseX / rect.width) * width;
+      if (svgX < padding.left - 10 || svgX > width - padding.right + 10) {
+        setHoverIndex(null);
+        return;
+      }
+      const idx = getIndexFromClientX(e.clientX, e.currentTarget);
+      setHoverIndex(idx);
     }
   };
 
-  const handleMouseLeave = () => {
+  const handlePointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
+    setIsDragging(false);
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handlePointerCancel = (e: React.PointerEvent<SVGSVGElement>) => {
+    setIsDragging(false);
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
     setHoverIndex(null);
+  };
+
+  const handlePointerLeave = () => {
+    if (!isDragging) {
+      setHoverIndex(null);
+    }
   };
 
   const activeTimelineIndex = playbackIndex !== undefined ? playbackIndex : timelineIndex;
@@ -547,7 +625,11 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-3">
           <span className="text-xs font-semibold text-gray-800">双水槽温度对比</span>
-          {hoverIndex !== null ? (
+          {isDragging ? (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-600 text-white font-semibold animate-pulse shadow-2xs">
+              拖动定位: {hoveredTime}
+            </span>
+          ) : hoverIndex !== null ? (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-medium">
               悬停: {hoveredTime}
             </span>
@@ -572,11 +654,18 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
 
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        className="w-full h-auto block select-none"
-        onMouseMove={handleMouseMove}
-        onMouseLeave={handleMouseLeave}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleMouseLeave}
+        className={`w-full h-auto block select-none touch-none ${
+          isDragging
+            ? 'cursor-grabbing'
+            : onSeek
+            ? 'cursor-ew-resize'
+            : 'cursor-crosshair'
+        }`}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+        onPointerLeave={handlePointerLeave}
       >
         <defs>
           <filter id="tooltip-shadow-dual" x="-20%" y="-20%" width="140%" height="140%">
@@ -687,54 +776,46 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
         )}
 
         {/* Timeline / Playback playhead line and dual markers */}
-        {activeTimelineIndex !== undefined && activeTimelineIndex >= 0 && activeTimelineIndex < dataPoints.length && (
-          <g pointerEvents="none">
-            <line
-              x1={getX(activeTimelineIndex)}
-              y1={padding.top}
-              x2={getX(activeTimelineIndex)}
-              y2={padding.top + chartHeight}
-              stroke="#6366f1"
-              strokeWidth="2"
-              strokeDasharray="4 2"
-            />
-            <circle
-              cx={getX(activeTimelineIndex)}
-              cy={getY(dataPoints[activeTimelineIndex].temp_tank1 ?? dataPoints[activeTimelineIndex].temperature ?? 0)}
-              r="5"
-              fill="#f59e0b"
-              stroke="#ffffff"
-              strokeWidth="2"
-            />
-            <circle
-              cx={getX(activeTimelineIndex)}
-              cy={getY(dataPoints[activeTimelineIndex].temp_tank2 ?? dataPoints[activeTimelineIndex].temperature ?? 0)}
-              r="5"
-              fill="#ea580c"
-              stroke="#ffffff"
-              strokeWidth="2"
-            />
-          </g>
-        )}
+        {activeTimelineIndex !== undefined &&
+          activeTimelineIndex >= 0 &&
+          activeTimelineIndex < dataPoints.length &&
+          (hoverIndex === null || hoverIndex !== activeTimelineIndex) && (
+            <g pointerEvents="none">
+              <line
+                x1={getX(activeTimelineIndex)}
+                y1={padding.top}
+                x2={getX(activeTimelineIndex)}
+                y2={padding.top + chartHeight}
+                stroke="#6366f1"
+                strokeWidth="2"
+                strokeDasharray="4 2"
+              />
+              <circle
+                cx={getX(activeTimelineIndex)}
+                cy={getY(dataPoints[activeTimelineIndex].temp_tank1 ?? dataPoints[activeTimelineIndex].temperature ?? 0)}
+                r="5"
+                fill="#f59e0b"
+                stroke="#ffffff"
+                strokeWidth="2"
+              />
+              <circle
+                cx={getX(activeTimelineIndex)}
+                cy={getY(dataPoints[activeTimelineIndex].temp_tank2 ?? dataPoints[activeTimelineIndex].temperature ?? 0)}
+                r="5"
+                fill="#ea580c"
+                stroke="#ffffff"
+                strokeWidth="2"
+              />
+            </g>
+          )}
 
-        {/* Interactive capture overlay */}
+        {/* Full area transparent rect to guarantee pointer events on every pixel */}
         <rect
-          x={padding.left}
-          y={padding.top}
-          width={chartWidth}
-          height={chartHeight}
+          x={0}
+          y={0}
+          width={width}
+          height={height}
           fill="transparent"
-          className="cursor-crosshair"
-          onClick={(e) => {
-            if (!onSeek || dataPoints.length === 0) return;
-            const rect = e.currentTarget.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left;
-            const svgX = (mouseX / rect.width) * width;
-            const clampedX = Math.max(padding.left, Math.min(width - padding.right, svgX));
-            const ratio = (clampedX - padding.left) / chartWidth;
-            const idx = Math.round(ratio * (dataPoints.length - 1));
-            onSeek(Math.max(0, Math.min(dataPoints.length - 1, idx)));
-          }}
         />
 
         {/* Hover elements: guide line, markers, and tooltip */}
@@ -1158,16 +1239,16 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
         </div>
       </div>
 
-      {/* Draggable Timeline Toolbar (In history mode and not in playback) */}
+      {/* Interactive History Timeline Toolbar (In history mode and not in playback) */}
       {!isPlayback && viewMode === 'history' && (
-        <div className="mb-3.5 bg-slate-50 border border-slate-200 rounded-xl p-3.5 shadow-xs transition-all">
-          {/* Row 1: Time position & Playback step controls */}
-          <div className="flex flex-wrap items-center justify-between gap-2.5 mb-2">
-            {/* Left: Time display & Frame position */}
+        <div className="mb-3.5 bg-slate-50 border border-slate-200 rounded-xl p-3.5 shadow-xs transition-all space-y-2.5">
+          {/* Row 1: Time position, cursor drag hint, sensor readings & step controls */}
+          <div className="flex flex-wrap items-center justify-between gap-2.5">
+            {/* Left: Time display & Frame position & Drag hint */}
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-semibold text-slate-800 flex items-center gap-1">
                 <Clock className="w-3.5 h-3.5 text-indigo-600" />
-                时间轴拖动定位:
+                时序游标定位:
               </span>
               <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded shadow-2xs">
                 {currentTimeStr}
@@ -1176,9 +1257,15 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
                 [ 第 {dataPoints.length > 0 ? timelineIndex + 1 : 0} / {dataPoints.length} 帧 · {progressPct}% ]
               </span>
 
+              {/* Intuitive drag prompt */}
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50/90 border border-indigo-200 text-indigo-700 text-[11px] font-medium">
+                <MoveHorizontal className="w-3.5 h-3.5 text-indigo-600" />
+                按住下方图表直接左右拖动定位
+              </span>
+
               {/* Instant sensor readings at timeline position */}
               {currentFrame && (
-                <div className="hidden sm:flex items-center gap-1.5 text-[11px] font-mono ml-1">
+                <div className="hidden xl:flex items-center gap-1.5 text-[11px] font-mono ml-1">
                   <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
                     T1: {(currentFrame.temp_tank1 ?? currentFrame.temperature ?? 0).toFixed(1)}°C
                   </span>
@@ -1261,35 +1348,8 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
             </div>
           </div>
 
-          {/* Row 2: Draggable Timeline Range Input */}
-          <div className="relative py-1">
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-mono text-slate-500 whitespace-nowrap min-w-[50px]">
-                {dataPoints.length > 0 ? formatTime(dataPoints[0].timestamp, 0) : '--:--:--'}
-              </span>
-              <div className="relative flex-1 flex items-center">
-                <input
-                  type="range"
-                  min={0}
-                  max={Math.max(0, dataPoints.length - 1)}
-                  value={timelineIndex}
-                  onChange={(e) => {
-                    const idx = Number(e.target.value);
-                    handleSeek(idx);
-                  }}
-                  className="w-full h-2.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600 focus:outline-none"
-                />
-              </div>
-              <span className="text-[11px] font-mono text-slate-500 whitespace-nowrap min-w-[50px] text-right">
-                {dataPoints.length > 0
-                  ? formatTime(dataPoints[dataPoints.length - 1].timestamp, dataPoints.length - 1)
-                  : '--:--:--'}
-              </span>
-            </div>
-          </div>
-
-          {/* Row 3: History span selector, custom time, refresh, export */}
-          <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 mt-1 border-t border-slate-200/80 text-xs">
+          {/* Row 2: History span selector, custom time, refresh, export */}
+          <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-slate-200/80 text-xs">
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-slate-600 font-medium">采样跨度:</span>
               {[50, 150, 300, 500, 1000].map((num) => (

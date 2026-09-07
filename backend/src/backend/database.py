@@ -216,7 +216,7 @@ class DatabaseManager:
         self,
         start_time: Optional[str] = None,
         end_time: Optional[str] = None,
-        limit: int = 100,
+        limit: Optional[int] = None,
         offset: int = 0,
         order: str = "DESC",
     ) -> List[TelemetryData]:
@@ -232,8 +232,13 @@ class DatabaseManager:
             params.append(end_time)
 
         order_clause = "ASC" if order.upper() == "ASC" else "DESC"
-        query += f" ORDER BY timestamp {order_clause} LIMIT ? OFFSET ?"
-        params.extend([limit, offset])
+        query += f" ORDER BY timestamp {order_clause}"
+        if limit is not None and limit > 0:
+            query += " LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+        elif offset > 0:
+            query += " LIMIT -1 OFFSET ?"
+            params.append(offset)
 
         with self.get_connection() as conn:
             cursor = conn.cursor()

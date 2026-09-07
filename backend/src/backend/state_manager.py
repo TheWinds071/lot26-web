@@ -345,7 +345,7 @@ class StateManager:
         self,
         start_time: Optional[str] = None,
         end_time: Optional[str] = None,
-        limit: int = 100,
+        limit: Optional[int] = None,
         offset: int = 0,
         order: str = "DESC",
     ) -> List[TelemetryData]:

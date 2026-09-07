@@ -1,17 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Calendar,
-  ChevronLeft,
-  ChevronRight,
   Clock,
   Database,
   Download,
-  MoveHorizontal,
-  Pause,
-  Play,
   RefreshCw,
-  SkipBack,
-  SkipForward,
   TrendingUp,
 } from 'lucide-react';
 import type { TelemetryData } from '../types';
@@ -54,6 +47,11 @@ interface SingleChartProps {
   playbackIndex?: number;
   timelineIndex?: number;
   onSeek?: (index: number) => void;
+  visibleStart?: number;
+  visibleEnd?: number;
+  onPan?: (newStart: number, newEnd: number) => void;
+  onWheelZoom?: (deltaY: number, mouseRatio: number) => void;
+  onResetZoom?: () => void;
 }
 
 const SingleChartItem: React.FC<SingleChartProps> = ({
@@ -70,11 +68,44 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
   playbackIndex,
   timelineIndex,
   onSeek,
+  visibleStart,
+  visibleEnd,
+  onPan,
+  onWheelZoom,
+  onResetZoom,
 }) => {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
+  const dragStartRef = useRef<{ clientX: number; start: number; end: number; hasMoved: boolean } | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
 
-  if (dataPoints.length === 0) {
+  const totalPoints = dataPoints.length;
+
+  const curStart = visibleStart !== undefined ? Math.max(0, Math.min(totalPoints - 1, visibleStart)) : 0;
+  const curEnd = visibleEnd !== undefined ? Math.max(curStart, Math.min(totalPoints - 1, visibleEnd)) : Math.max(0, totalPoints - 1);
+  const curSpan = Math.max(0.001, curEnd - curStart);
+
+  // Wheel listener with passive: false to reliably zoom without scrolling page
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg || !onWheelZoom) return;
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = svg.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const svgX = (mouseX / rect.width) * width;
+      const chartWidth = width - padding.left - padding.right;
+      const clampedX = Math.max(padding.left, Math.min(width - padding.right, svgX));
+      const ratio = (clampedX - padding.left) / Math.max(1, chartWidth);
+      onWheelZoom(e.deltaY, ratio);
+    };
+    svg.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      svg.removeEventListener('wheel', handleWheel);
+    };
+  }, [onWheelZoom, width, padding]);
+
+  if (totalPoints === 0) {
     return (
       <div className="py-12 text-center text-xs text-gray-500 bg-slate-50 rounded-xl border border-slate-200">
         <p>暂无时序数据，等待 TCP 采集流...</p>
@@ -91,36 +122,31 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
   const range = actualMax - actualMin || 1;
 
   const getX = (index: number) =>
-    padding.left + (index / Math.max(1, dataPoints.length - 1)) * chartWidth;
+    padding.left + ((index - curStart) / curSpan) * chartWidth;
   const getY = (val: number) =>
     padding.top + chartHeight - ((val - actualMin) / range) * chartHeight;
 
-  const points = dataPoints
-    .map((d, i) => `${getX(i)},${getY(d[dataKey] ?? d.temperature ?? 0)}`)
+  // Sliced data points within view window (+1 margin for clean curve connection)
+  const sliceStart = Math.max(0, Math.floor(curStart) - 1);
+  const sliceEnd = Math.min(totalPoints - 1, Math.ceil(curEnd) + 1);
+  const sliceData = dataPoints.slice(sliceStart, sliceEnd + 1);
+
+  const points = sliceData
+    .map((d, i) => `${getX(sliceStart + i)},${getY(d[dataKey] ?? d.temperature ?? 0)}`)
     .join(' ');
 
   const areaPath = `
-    M ${getX(0)} ${getY(dataPoints[0][dataKey] ?? dataPoints[0].temperature ?? 0)}
+    M ${getX(sliceStart)} ${getY(sliceData[0][dataKey] ?? sliceData[0].temperature ?? 0)}
     L ${points}
-    L ${getX(dataPoints.length - 1)} ${padding.top + chartHeight}
-    L ${getX(0)} ${padding.top + chartHeight}
+    L ${getX(sliceEnd)} ${padding.top + chartHeight}
+    L ${getX(sliceStart)} ${padding.top + chartHeight}
     Z
   `;
 
   const latestVal =
-    dataPoints[dataPoints.length - 1][dataKey] ??
-    dataPoints[dataPoints.length - 1].temperature ??
+    dataPoints[totalPoints - 1][dataKey] ??
+    dataPoints[totalPoints - 1].temperature ??
     0;
-
-  const getIndexFromClientX = (clientX: number, target: SVGSVGElement): number => {
-    const rect = target.getBoundingClientRect();
-    const mouseX = clientX - rect.left;
-    const svgX = (mouseX / rect.width) * width;
-    const clampedX = Math.max(padding.left, Math.min(width - padding.right, svgX));
-    const ratio = (clampedX - padding.left) / Math.max(1, chartWidth);
-    const idx = Math.round(ratio * (dataPoints.length - 1));
-    return Math.max(0, Math.min(dataPoints.length - 1, idx));
-  };
 
   const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     if (e.button !== 0 && e.pointerType === 'mouse') return;
@@ -130,17 +156,69 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
     } catch {
       // ignore
     }
-    const idx = getIndexFromClientX(e.clientX, e.currentTarget);
-    setHoverIndex(idx);
-    if (onSeek) onSeek(idx);
+    dragStartRef.current = {
+      clientX: e.clientX,
+      start: curStart,
+      end: curEnd,
+      hasMoved: false,
+    };
   };
 
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (isDragging || (e.buttons & 1) === 1) {
-      const idx = getIndexFromClientX(e.clientX, e.currentTarget);
-      setHoverIndex(idx);
-      if (onSeek) onSeek(idx);
+    if (isDragging && dragStartRef.current) {
+      const deltaX = e.clientX - dragStartRef.current.clientX;
+      if (Math.abs(deltaX) > 2) {
+        dragStartRef.current.hasMoved = true;
+      }
+
+      const rect = e.currentTarget.getBoundingClientRect();
+      const svgDeltaX = (deltaX / rect.width) * width;
+      let start = dragStartRef.current.start;
+      let end = dragStartRef.current.end;
+      let span = end - start;
+
+      // If at full view, auto-zoom to a comfortable sliding window so drag always slides ("无极滑动")
+      if (span >= totalPoints - 1 - 0.01 && totalPoints > 10 && onPan) {
+        const mouseX = dragStartRef.current.clientX - rect.left;
+        const ratio = Math.max(0, Math.min(1, mouseX / rect.width));
+        const anchor = ratio * (totalPoints - 1);
+        const initialSpan = Math.min(150, Math.max(10, Math.round(totalPoints * 0.35)));
+        start = Math.max(0, Math.min(totalPoints - 1 - initialSpan, anchor - ratio * initialSpan));
+        end = start + initialSpan;
+        span = initialSpan;
+        dragStartRef.current.start = start;
+        dragStartRef.current.end = end;
+      }
+
+      if (onPan) {
+        // Continuous floating-point pan without integer quantization for true "无极滑动"
+        const deltaPoints = (svgDeltaX / Math.max(1, chartWidth)) * span;
+        let newStart = start - deltaPoints;
+        let newEnd = end - deltaPoints;
+
+        if (newStart < 0) {
+          newStart = 0;
+          newEnd = Math.min(totalPoints - 1, newStart + span);
+        }
+        if (newEnd > totalPoints - 1) {
+          newEnd = totalPoints - 1;
+          newStart = Math.max(0, newEnd - span);
+        }
+
+        onPan(newStart, newEnd);
+
+        // Update seek position under cursor live
+        const mouseX = e.clientX - rect.left;
+        const svgX = (mouseX / rect.width) * width;
+        const clampedX = Math.max(padding.left, Math.min(width - padding.right, svgX));
+        const ratio = (clampedX - padding.left) / Math.max(1, chartWidth);
+        const curIdx = Math.round(newStart + ratio * (newEnd - newStart));
+        const clampedIdx = Math.max(0, Math.min(totalPoints - 1, curIdx));
+        if (onSeek) onSeek(clampedIdx);
+        setHoverIndex(clampedIdx);
+      }
     } else {
+      // Normal hover
       const rect = e.currentTarget.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
       const svgX = (mouseX / rect.width) * width;
@@ -148,8 +226,11 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
         setHoverIndex(null);
         return;
       }
-      const idx = getIndexFromClientX(e.clientX, e.currentTarget);
-      setHoverIndex(idx);
+      const clampedX = Math.max(padding.left, Math.min(width - padding.right, svgX));
+      const ratio = (clampedX - padding.left) / Math.max(1, chartWidth);
+      const curIdx = Math.round(curStart + ratio * curSpan);
+      const clampedIdx = Math.max(0, Math.min(totalPoints - 1, curIdx));
+      setHoverIndex(clampedIdx);
     }
   };
 
@@ -160,6 +241,19 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
     } catch {
       // ignore
     }
+
+    if (dragStartRef.current && !dragStartRef.current.hasMoved && totalPoints > 0) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const svgX = (mouseX / rect.width) * width;
+      const clampedX = Math.max(padding.left, Math.min(width - padding.right, svgX));
+      const ratio = (clampedX - padding.left) / Math.max(1, chartWidth);
+      const curIdx = Math.round(curStart + ratio * curSpan);
+      const clampedIdx = Math.max(0, Math.min(totalPoints - 1, curIdx));
+      if (onSeek) onSeek(clampedIdx);
+      setHoverIndex(clampedIdx);
+    }
+    dragStartRef.current = null;
   };
 
   const handlePointerCancel = (e: React.PointerEvent<SVGSVGElement>) => {
@@ -169,6 +263,7 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
     } catch {
       // ignore
     }
+    dragStartRef.current = null;
     setHoverIndex(null);
   };
 
@@ -183,8 +278,8 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
     hoverIndex !== null
       ? hoverIndex
       : activeTimelineIndex !== undefined &&
-        activeTimelineIndex >= 0 &&
-        activeTimelineIndex < dataPoints.length
+        activeTimelineIndex >= curStart &&
+        activeTimelineIndex <= curEnd
       ? activeTimelineIndex
       : null;
   const hoveredPoint = activeIndex !== null ? dataPoints[activeIndex] : null;
@@ -226,7 +321,7 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
           <span className="text-xs font-semibold text-gray-800">{title}</span>
           {isDragging ? (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-600 text-white font-semibold animate-pulse shadow-2xs">
-              拖动定位: {hoveredTime}
+              无极平移: {hoveredTime}
             </span>
           ) : hoverIndex !== null ? (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-medium">
@@ -247,21 +342,29 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
       </div>
 
       <svg
+        ref={svgRef}
         viewBox={`0 0 ${width} ${height}`}
         className={`w-full h-auto block select-none touch-none ${
           isDragging
             ? 'cursor-grabbing'
-            : onSeek
-            ? 'cursor-ew-resize'
-            : 'cursor-crosshair'
+            : 'cursor-grab active:cursor-grabbing'
         }`}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
         onPointerLeave={handlePointerLeave}
+        onDoubleClick={onResetZoom}
       >
         <defs>
+          <clipPath id={`chart-clip-${dataKey}`}>
+            <rect
+              x={padding.left}
+              y={padding.top}
+              width={chartWidth}
+              height={chartHeight}
+            />
+          </clipPath>
           <linearGradient id={`corp-grad-${dataKey}`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={color} stopOpacity="0.25" />
             <stop offset="100%" stopColor={color} stopOpacity="0.0" />
@@ -293,21 +396,21 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
                 fontSize="10"
                 textAnchor="end"
               >
-                {val.toFixed(dataKey === 'pressure' ? 2 : 0)}
+                {val.toFixed(dataKey === 'pressure' ? 1 : 0)}
               </text>
             </g>
           );
         })}
 
-        {/* X-axis time ticks */}
-        {dataPoints.length > 1 &&
+        {/* X-axis time ticks sampled across visible view window */}
+        {totalPoints > 1 &&
           [0, 0.25, 0.5, 0.75, 1].map((pct, idx) => {
             const dataIdx = Math.min(
-              dataPoints.length - 1,
-              Math.floor(pct * (dataPoints.length - 1))
+              totalPoints - 1,
+              Math.max(0, Math.round(curStart + pct * curSpan))
             );
-            const x = getX(dataIdx);
-            const timeStr = formatTime(dataPoints[dataIdx].timestamp, dataIdx);
+            const x = padding.left + pct * chartWidth;
+            const timeStr = formatTime(dataPoints[dataIdx]?.timestamp, dataIdx);
             const textAnchor = idx === 0 ? 'start' : idx === 4 ? 'end' : 'middle';
             return (
               <g key={`x-tick-${pct}`} pointerEvents="none">
@@ -333,10 +436,14 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
             );
           })}
 
-        {/* Area fill */}
-        <path d={areaPath} fill={`url(#corp-grad-${dataKey})`} />
+        {/* Area fill with clipPath */}
+        <path
+          d={areaPath}
+          fill={`url(#corp-grad-${dataKey})`}
+          clipPath={`url(#chart-clip-${dataKey})`}
+        />
 
-        {/* Line stroke */}
+        {/* Line stroke with clipPath */}
         <polyline
           fill="none"
           stroke={color}
@@ -344,26 +451,31 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
           strokeLinecap="round"
           strokeLinejoin="round"
           points={points}
+          clipPath={`url(#chart-clip-${dataKey})`}
         />
 
-        {/* Latest point circle (when not hovering and no timeline/playback index) */}
-        {dataPoints.length > 0 && hoverIndex === null && activeTimelineIndex === undefined && (
-          <circle
-            cx={getX(dataPoints.length - 1)}
-            cy={getY(latestVal)}
-            r="4"
-            fill={color}
-            stroke="#ffffff"
-            strokeWidth="2"
-          />
-        )}
+        {/* Latest point circle (when at end of data) */}
+        {totalPoints > 0 &&
+          hoverIndex === null &&
+          activeTimelineIndex === undefined &&
+          curEnd >= totalPoints - 1 && (
+            <circle
+              cx={getX(totalPoints - 1)}
+              cy={getY(latestVal)}
+              r="4"
+              fill={color}
+              stroke="#ffffff"
+              strokeWidth="2"
+              clipPath={`url(#chart-clip-${dataKey})`}
+            />
+          )}
 
         {/* Timeline / Playback playhead line & point */}
         {activeTimelineIndex !== undefined &&
-          activeTimelineIndex >= 0 &&
-          activeTimelineIndex < dataPoints.length &&
+          activeTimelineIndex >= curStart &&
+          activeTimelineIndex <= curEnd &&
           (hoverIndex === null || hoverIndex !== activeTimelineIndex) && (
-            <g pointerEvents="none">
+            <g pointerEvents="none" clipPath={`url(#chart-clip-${dataKey})`}>
               <line
                 x1={getX(activeTimelineIndex)}
                 y1={padding.top}
@@ -475,6 +587,11 @@ interface DualTempChartProps {
   playbackIndex?: number;
   timelineIndex?: number;
   onSeek?: (index: number) => void;
+  visibleStart?: number;
+  visibleEnd?: number;
+  onPan?: (newStart: number, newEnd: number) => void;
+  onWheelZoom?: (deltaY: number, mouseRatio: number) => void;
+  onResetZoom?: () => void;
 }
 
 const DualTempChartItem: React.FC<DualTempChartProps> = ({
@@ -485,11 +602,44 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
   playbackIndex,
   timelineIndex,
   onSeek,
+  visibleStart,
+  visibleEnd,
+  onPan,
+  onWheelZoom,
+  onResetZoom,
 }) => {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
+  const dragStartRef = useRef<{ clientX: number; start: number; end: number; hasMoved: boolean } | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
 
-  if (dataPoints.length === 0) return null;
+  const totalPoints = dataPoints.length;
+
+  const curStart = visibleStart !== undefined ? Math.max(0, Math.min(totalPoints - 1, visibleStart)) : 0;
+  const curEnd = visibleEnd !== undefined ? Math.max(curStart, Math.min(totalPoints - 1, visibleEnd)) : Math.max(0, totalPoints - 1);
+  const curSpan = Math.max(0.001, curEnd - curStart);
+
+  // Wheel listener with passive: false to reliably zoom without scrolling page
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg || !onWheelZoom) return;
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = svg.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const svgX = (mouseX / rect.width) * width;
+      const chartWidth = width - padding.left - padding.right;
+      const clampedX = Math.max(padding.left, Math.min(width - padding.right, svgX));
+      const ratio = (clampedX - padding.left) / Math.max(1, chartWidth);
+      onWheelZoom(e.deltaY, ratio);
+    };
+    svg.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      svg.removeEventListener('wheel', handleWheel);
+    };
+  }, [onWheelZoom, width, padding]);
+
+  if (totalPoints === 0) return null;
 
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
@@ -502,29 +652,24 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
   const range = actualMax - actualMin || 1;
 
   const getX = (index: number) =>
-    padding.left + (index / Math.max(1, dataPoints.length - 1)) * chartWidth;
+    padding.left + ((index - curStart) / curSpan) * chartWidth;
   const getY = (val: number) =>
     padding.top + chartHeight - ((val - actualMin) / range) * chartHeight;
 
-  const points1 = dataPoints
-    .map((d, i) => `${getX(i)},${getY(d.temp_tank1 ?? d.temperature ?? 0)}`)
+  // Sliced data points within view window
+  const sliceStart = Math.max(0, Math.floor(curStart) - 1);
+  const sliceEnd = Math.min(totalPoints - 1, Math.ceil(curEnd) + 1);
+  const sliceData = dataPoints.slice(sliceStart, sliceEnd + 1);
+
+  const points1 = sliceData
+    .map((d, i) => `${getX(sliceStart + i)},${getY(d.temp_tank1 ?? d.temperature ?? 0)}`)
     .join(' ');
-  const points2 = dataPoints
-    .map((d, i) => `${getX(i)},${getY(d.temp_tank2 ?? d.temperature ?? 0)}`)
+  const points2 = sliceData
+    .map((d, i) => `${getX(sliceStart + i)},${getY(d.temp_tank2 ?? d.temperature ?? 0)}`)
     .join(' ');
 
-  const latest1 = t1Vals[t1Vals.length - 1];
-  const latest2 = t2Vals[t2Vals.length - 1];
-
-  const getIndexFromClientX = (clientX: number, target: SVGSVGElement): number => {
-    const rect = target.getBoundingClientRect();
-    const mouseX = clientX - rect.left;
-    const svgX = (mouseX / rect.width) * width;
-    const clampedX = Math.max(padding.left, Math.min(width - padding.right, svgX));
-    const ratio = (clampedX - padding.left) / Math.max(1, chartWidth);
-    const idx = Math.round(ratio * (dataPoints.length - 1));
-    return Math.max(0, Math.min(dataPoints.length - 1, idx));
-  };
+  const latest1 = t1Vals[totalPoints - 1];
+  const latest2 = t2Vals[totalPoints - 1];
 
   const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     if (e.button !== 0 && e.pointerType === 'mouse') return;
@@ -534,17 +679,69 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
     } catch {
       // ignore
     }
-    const idx = getIndexFromClientX(e.clientX, e.currentTarget);
-    setHoverIndex(idx);
-    if (onSeek) onSeek(idx);
+    dragStartRef.current = {
+      clientX: e.clientX,
+      start: curStart,
+      end: curEnd,
+      hasMoved: false,
+    };
   };
 
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (isDragging || (e.buttons & 1) === 1) {
-      const idx = getIndexFromClientX(e.clientX, e.currentTarget);
-      setHoverIndex(idx);
-      if (onSeek) onSeek(idx);
+    if (isDragging && dragStartRef.current) {
+      const deltaX = e.clientX - dragStartRef.current.clientX;
+      if (Math.abs(deltaX) > 2) {
+        dragStartRef.current.hasMoved = true;
+      }
+
+      const rect = e.currentTarget.getBoundingClientRect();
+      const svgDeltaX = (deltaX / rect.width) * width;
+      let start = dragStartRef.current.start;
+      let end = dragStartRef.current.end;
+      let span = end - start;
+
+      // If at full view, auto-focus into sliding window so drag always slides ("无极滑动")
+      if (span >= totalPoints - 1 - 0.01 && totalPoints > 10 && onPan) {
+        const mouseX = dragStartRef.current.clientX - rect.left;
+        const ratio = Math.max(0, Math.min(1, mouseX / rect.width));
+        const anchor = ratio * (totalPoints - 1);
+        const initialSpan = Math.min(150, Math.max(10, Math.round(totalPoints * 0.35)));
+        start = Math.max(0, Math.min(totalPoints - 1 - initialSpan, anchor - ratio * initialSpan));
+        end = start + initialSpan;
+        span = initialSpan;
+        dragStartRef.current.start = start;
+        dragStartRef.current.end = end;
+      }
+
+      if (onPan) {
+        // Continuous floating-point pan without integer quantization for true "无极滑动"
+        const deltaPoints = (svgDeltaX / Math.max(1, chartWidth)) * span;
+        let newStart = start - deltaPoints;
+        let newEnd = end - deltaPoints;
+
+        if (newStart < 0) {
+          newStart = 0;
+          newEnd = Math.min(totalPoints - 1, newStart + span);
+        }
+        if (newEnd > totalPoints - 1) {
+          newEnd = totalPoints - 1;
+          newStart = Math.max(0, newEnd - span);
+        }
+
+        onPan(newStart, newEnd);
+
+        // Update seek position under cursor live
+        const mouseX = e.clientX - rect.left;
+        const svgX = (mouseX / rect.width) * width;
+        const clampedX = Math.max(padding.left, Math.min(width - padding.right, svgX));
+        const ratio = (clampedX - padding.left) / Math.max(1, chartWidth);
+        const curIdx = Math.round(newStart + ratio * (newEnd - newStart));
+        const clampedIdx = Math.max(0, Math.min(totalPoints - 1, curIdx));
+        if (onSeek) onSeek(clampedIdx);
+        setHoverIndex(clampedIdx);
+      }
     } else {
+      // Normal hover
       const rect = e.currentTarget.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
       const svgX = (mouseX / rect.width) * width;
@@ -552,8 +749,11 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
         setHoverIndex(null);
         return;
       }
-      const idx = getIndexFromClientX(e.clientX, e.currentTarget);
-      setHoverIndex(idx);
+      const clampedX = Math.max(padding.left, Math.min(width - padding.right, svgX));
+      const ratio = (clampedX - padding.left) / Math.max(1, chartWidth);
+      const curIdx = Math.round(curStart + ratio * curSpan);
+      const clampedIdx = Math.max(0, Math.min(totalPoints - 1, curIdx));
+      setHoverIndex(clampedIdx);
     }
   };
 
@@ -564,6 +764,20 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
     } catch {
       // ignore
     }
+
+    if (dragStartRef.current && !dragStartRef.current.hasMoved && totalPoints > 0) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const svgX = (mouseX / rect.width) * width;
+      const chartWidth = width - padding.left - padding.right;
+      const clampedX = Math.max(padding.left, Math.min(width - padding.right, svgX));
+      const ratio = (clampedX - padding.left) / Math.max(1, chartWidth);
+      const curIdx = Math.round(curStart + ratio * curSpan);
+      const clampedIdx = Math.max(0, Math.min(totalPoints - 1, curIdx));
+      if (onSeek) onSeek(clampedIdx);
+      setHoverIndex(clampedIdx);
+    }
+    dragStartRef.current = null;
   };
 
   const handlePointerCancel = (e: React.PointerEvent<SVGSVGElement>) => {
@@ -573,6 +787,7 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
     } catch {
       // ignore
     }
+    dragStartRef.current = null;
     setHoverIndex(null);
   };
 
@@ -587,8 +802,8 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
     hoverIndex !== null
       ? hoverIndex
       : activeTimelineIndex !== undefined &&
-        activeTimelineIndex >= 0 &&
-        activeTimelineIndex < dataPoints.length
+        activeTimelineIndex >= curStart &&
+        activeTimelineIndex <= curEnd
       ? activeTimelineIndex
       : null;
   const hoveredPoint = activeIndex !== null ? dataPoints[activeIndex] : null;
@@ -627,7 +842,7 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
           <span className="text-xs font-semibold text-gray-800">双水槽温度对比</span>
           {isDragging ? (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-600 text-white font-semibold animate-pulse shadow-2xs">
-              拖动定位: {hoveredTime}
+              无极平移: {hoveredTime}
             </span>
           ) : hoverIndex !== null ? (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-medium">
@@ -653,21 +868,29 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
       </div>
 
       <svg
+        ref={svgRef}
         viewBox={`0 0 ${width} ${height}`}
         className={`w-full h-auto block select-none touch-none ${
           isDragging
             ? 'cursor-grabbing'
-            : onSeek
-            ? 'cursor-ew-resize'
-            : 'cursor-crosshair'
+            : 'cursor-grab active:cursor-grabbing'
         }`}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
         onPointerLeave={handlePointerLeave}
+        onDoubleClick={onResetZoom}
       >
         <defs>
+          <clipPath id="chart-clip-dual">
+            <rect
+              x={padding.left}
+              y={padding.top}
+              width={chartWidth}
+              height={chartHeight}
+            />
+          </clipPath>
           <filter id="tooltip-shadow-dual" x="-20%" y="-20%" width="140%" height="140%">
             <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#000000" floodOpacity="0.3" />
           </filter>
@@ -701,15 +924,15 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
           );
         })}
 
-        {/* X-axis time ticks */}
-        {dataPoints.length > 1 &&
+        {/* X-axis time ticks sampled across visible view window */}
+        {totalPoints > 1 &&
           [0, 0.25, 0.5, 0.75, 1].map((pct, idx) => {
             const dataIdx = Math.min(
-              dataPoints.length - 1,
-              Math.floor(pct * (dataPoints.length - 1))
+              totalPoints - 1,
+              Math.max(0, Math.round(curStart + pct * curSpan))
             );
-            const x = getX(dataIdx);
-            const timeStr = formatTime(dataPoints[dataIdx].timestamp, dataIdx);
+            const x = padding.left + pct * chartWidth;
+            const timeStr = formatTime(dataPoints[dataIdx]?.timestamp, dataIdx);
             const textAnchor = idx === 0 ? 'start' : idx === 4 ? 'end' : 'middle';
             return (
               <g key={`x-tick-dual-${pct}`} pointerEvents="none">
@@ -735,15 +958,16 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
             );
           })}
 
-        {/* Line 1: Tank 1 */}
+        {/* Line 1: Tank 1 with clipPath */}
         <polyline
           fill="none"
           stroke="#f59e0b"
           strokeWidth="2.5"
           strokeLinecap="round"
           points={points1}
+          clipPath="url(#chart-clip-dual)"
         />
-        {/* Line 2: Tank 2 */}
+        {/* Line 2: Tank 2 with clipPath */}
         <polyline
           fill="none"
           stroke="#ea580c"
@@ -751,36 +975,42 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
           strokeLinecap="round"
           strokeDasharray="6 3"
           points={points2}
+          clipPath="url(#chart-clip-dual)"
         />
 
-        {/* End points when not hovering and no timeline/playback index */}
-        {hoverIndex === null && activeTimelineIndex === undefined && (
-          <>
-            <circle
-              cx={getX(dataPoints.length - 1)}
-              cy={getY(latest1)}
-              r="4"
-              fill="#f59e0b"
-              stroke="#ffffff"
-              strokeWidth="2"
-            />
-            <circle
-              cx={getX(dataPoints.length - 1)}
-              cy={getY(latest2)}
-              r="4"
-              fill="#ea580c"
-              stroke="#ffffff"
-              strokeWidth="2"
-            />
-          </>
-        )}
+        {/* End points when at end of data */}
+        {totalPoints > 0 &&
+          hoverIndex === null &&
+          activeTimelineIndex === undefined &&
+          curEnd >= totalPoints - 1 && (
+            <>
+              <circle
+                cx={getX(totalPoints - 1)}
+                cy={getY(latest1)}
+                r="4"
+                fill="#f59e0b"
+                stroke="#ffffff"
+                strokeWidth="2"
+                clipPath="url(#chart-clip-dual)"
+              />
+              <circle
+                cx={getX(totalPoints - 1)}
+                cy={getY(latest2)}
+                r="4"
+                fill="#ea580c"
+                stroke="#ffffff"
+                strokeWidth="2"
+                clipPath="url(#chart-clip-dual)"
+              />
+            </>
+          )}
 
         {/* Timeline / Playback playhead line and dual markers */}
         {activeTimelineIndex !== undefined &&
-          activeTimelineIndex >= 0 &&
-          activeTimelineIndex < dataPoints.length &&
+          activeTimelineIndex >= curStart &&
+          activeTimelineIndex <= curEnd &&
           (hoverIndex === null || hoverIndex !== activeTimelineIndex) && (
-            <g pointerEvents="none">
+            <g pointerEvents="none" clipPath="url(#chart-clip-dual)">
               <line
                 x1={getX(activeTimelineIndex)}
                 y1={padding.top}
@@ -927,38 +1157,37 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
   const [viewMode, setViewMode] = useState<'live' | 'history'>('live');
   const [historicalData, setHistoricalData] = useState<TelemetryData[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(false);
-  const [historyLimit, setHistoryLimit] = useState<number>(300);
   const [timelineIndex, setTimelineIndex] = useState<number>(0);
-  const [isPlayingTimeline, setIsPlayingTimeline] = useState<boolean>(false);
-  const [playSpeed, setPlaySpeed] = useState<number>(1);
   const [showCustomFilter, setShowCustomFilter] = useState<boolean>(false);
   const [customStart, setCustomStart] = useState<string>('');
   const [customEnd, setCustomEnd] = useState<string>('');
+  const [viewRange, setViewRange] = useState<{ start: number; end: number } | null>(null);
 
-  const fetchHistoricalRecords = async (limit: number, start?: string, end?: string) => {
+  const fetchHistoricalRecords = async (start?: string, end?: string) => {
     setIsLoadingHistory(true);
     try {
-      let url = '';
-      if (start || end) {
-        url = `/api/history/query?order=ASC&limit=${limit}`;
-        if (start) url += `&start_time=${encodeURIComponent(start)}`;
-        if (end) url += `&end_time=${encodeURIComponent(end)}`;
-      } else {
-        url = `/api/history/query?order=DESC&limit=${limit}`;
-      }
+      let url = '/api/history/query?order=ASC';
+      if (start) url += `&start_time=${encodeURIComponent(start)}`;
+      if (end) url += `&end_time=${encodeURIComponent(end)}`;
 
       const res = await fetch(url);
       if (res.ok) {
         const json = await res.json();
-        let records: TelemetryData[] = json.records || [];
-        if (!start && !end) {
-          records = [...records].reverse();
-        }
+        const records: TelemetryData[] = json.records || [];
         setHistoricalData(records);
         if (records.length > 0) {
           const lastIdx = records.length - 1;
           setTimelineIndex(lastIdx);
           onHistoricalFrameSelect?.(records[lastIdx]);
+          // Default to viewing a comfortable active window (150 points) so user can immediately slide backwards
+          const defaultSpan = Math.min(150, lastIdx);
+          if (defaultSpan > 0 && records.length > 30) {
+            setViewRange({ start: lastIdx - defaultSpan, end: lastIdx });
+          } else {
+            setViewRange(null);
+          }
+        } else {
+          setViewRange(null);
         }
       }
     } catch (e) {
@@ -971,7 +1200,7 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
   const handleSwitchToHistory = () => {
     setViewMode('history');
     if (historicalData.length === 0) {
-      fetchHistoricalRecords(historyLimit);
+      fetchHistoricalRecords();
     } else {
       const idx = Math.min(timelineIndex, historicalData.length - 1);
       onHistoricalFrameSelect?.(historicalData[idx]);
@@ -980,13 +1209,12 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
 
   const handleSwitchToLive = () => {
     setViewMode('live');
-    setIsPlayingTimeline(false);
+    setViewRange(null);
     onHistoricalFrameSelect?.(null);
   };
 
   const handleSeek = (index: number) => {
     setTimelineIndex(index);
-    setIsPlayingTimeline(false);
     const target =
       viewMode === 'history' ? historicalData[index] : isPlayback ? history[index] : null;
     if (target) {
@@ -1001,32 +1229,65 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
     ? historicalData
     : history.slice(-40);
 
-  // Auto-play ticker along the historical timeline
-  useEffect(() => {
-    if (!isPlayingTimeline || dataPoints.length === 0) return;
-    const intervalMs = Math.max(50, Math.floor(1000 / playSpeed));
-    const timer = setInterval(() => {
-      setTimelineIndex((prev) => {
-        if (prev >= dataPoints.length - 1) {
-          setIsPlayingTimeline(false);
-          return prev;
-        }
-        const next = prev + 1;
-        if (viewMode === 'history' && historicalData[next]) {
-          onHistoricalFrameSelect?.(historicalData[next]);
-        }
-        return next;
-      });
-    }, intervalMs);
-    return () => clearInterval(timer);
-  }, [
-    isPlayingTimeline,
-    playSpeed,
-    dataPoints.length,
-    viewMode,
-    historicalData,
-    onHistoricalFrameSelect,
-  ]);
+  const totalPoints = dataPoints.length;
+  const visibleStart = viewRange
+    ? Math.max(0, Math.min(totalPoints - 1, viewRange.start))
+    : 0;
+  const visibleEnd = viewRange
+    ? Math.max(visibleStart, Math.min(totalPoints - 1, viewRange.end))
+    : Math.max(0, totalPoints - 1);
+  const isZoomed =
+    viewRange !== null &&
+    (visibleStart > 0.01 || visibleEnd < totalPoints - 1 - 0.01) &&
+    visibleEnd - visibleStart < totalPoints - 1 - 0.01;
+
+  const handleWheelZoom = (deltaY: number, mouseRatio: number) => {
+    if (totalPoints <= 3) return;
+
+    const currentSpan = visibleEnd - visibleStart;
+    const zoomFactor = deltaY < 0 ? 0.75 : 1.35;
+    const minSpan = Math.min(4, totalPoints - 1);
+    const maxSpan = totalPoints - 1;
+
+    let newSpan = currentSpan * zoomFactor;
+    newSpan = Math.max(minSpan, Math.min(maxSpan, newSpan));
+
+    if (newSpan >= maxSpan - 0.01) {
+      setViewRange(null);
+      return;
+    }
+
+    const anchorIdx = visibleStart + mouseRatio * currentSpan;
+    let newStart = anchorIdx - mouseRatio * newSpan;
+    let newEnd = newStart + newSpan;
+
+    if (newStart < 0) {
+      newStart = 0;
+      newEnd = Math.min(totalPoints - 1, newStart + newSpan);
+    }
+    if (newEnd > totalPoints - 1) {
+      newEnd = totalPoints - 1;
+      newStart = Math.max(0, newEnd - newSpan);
+    }
+
+    setViewRange({ start: newStart, end: newEnd });
+  };
+
+  const handlePan = (newStart: number, newEnd: number) => {
+    setViewRange({ start: newStart, end: newEnd });
+  };
+
+  const handleResetZoom = () => {
+    if (isZoomed) {
+      setViewRange(null);
+    } else if (totalPoints > 150) {
+      const defaultSpan = 150;
+      const targetIdx = Math.min(timelineIndex, totalPoints - 1);
+      const half = Math.floor(defaultSpan / 2);
+      const start = Math.max(0, Math.min(totalPoints - 1 - defaultSpan, targetIdx - half));
+      setViewRange({ start, end: start + defaultSpan });
+    }
+  };
 
   const stats = useMemo(() => {
     const dataset = isPlayback ? history : viewMode === 'history' ? historicalData : null;
@@ -1080,18 +1341,6 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
     };
   }, [historicalData, history, isPlayback, viewMode]);
 
-  const currentFrame =
-    dataPoints.length > 0 && timelineIndex >= 0 && timelineIndex < dataPoints.length
-      ? dataPoints[timelineIndex]
-      : null;
-  const currentTimeStr = currentFrame
-    ? formatTime(currentFrame.timestamp, timelineIndex)
-    : '--:--:--';
-  const progressPct =
-    dataPoints.length > 1
-      ? ((timelineIndex / (dataPoints.length - 1)) * 100).toFixed(0)
-      : '100';
-
   const width = 800;
   const height = 180;
   const padding = { top: 20, right: 30, bottom: 30, left: 45 };
@@ -1124,17 +1373,12 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
                 {isPlayback
                   ? '历史趋势时序回放波形'
                   : viewMode === 'history'
-                  ? '历史记录趋势分析 (SQLite)'
+                  ? '历史记录趋势分析'
                   : '实时运行趋势监控'}
               </h3>
               {isPlayback && (
                 <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-200">
                   时序推演 · 点击折线跳转
-                </span>
-              )}
-              {!isPlayback && viewMode === 'history' && (
-                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 text-indigo-800 border border-indigo-200">
-                  SQLite 持久化数据
                 </span>
               )}
               {!isPlayback && viewMode === 'live' && (
@@ -1143,13 +1387,6 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
                 </span>
               )}
             </div>
-            <p className="text-xs text-gray-500 font-normal">
-              {isPlayback
-                ? '历史切片数据流推演 · 支持拖拽时间轴与折线定点跳转'
-                : viewMode === 'history'
-                ? '基于 SQLite 数据库历史数据直接绘制趋势曲线，支持时间轴拖动与播放推演'
-                : '双水槽水温、管道压力与循环流量动态时序波形 (最近40帧)'}
-            </p>
           </div>
         </div>
 
@@ -1236,162 +1473,19 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
               循环流量
             </button>
           </div>
-        </div>
-      </div>
 
-      {/* Interactive History Timeline Toolbar (In history mode and not in playback) */}
-      {!isPlayback && viewMode === 'history' && (
-        <div className="mb-3.5 bg-slate-50 border border-slate-200 rounded-xl p-3.5 shadow-xs transition-all space-y-2.5">
-          {/* Row 1: Time position, cursor drag hint, sensor readings & step controls */}
-          <div className="flex flex-wrap items-center justify-between gap-2.5">
-            {/* Left: Time display & Frame position & Drag hint */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-semibold text-slate-800 flex items-center gap-1">
-                <Clock className="w-3.5 h-3.5 text-indigo-600" />
-                时序游标定位:
-              </span>
-              <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded shadow-2xs">
-                {currentTimeStr}
-              </span>
-              <span className="text-[11px] text-slate-500 font-mono">
-                [ 第 {dataPoints.length > 0 ? timelineIndex + 1 : 0} / {dataPoints.length} 帧 · {progressPct}% ]
-              </span>
-
-              {/* Intuitive drag prompt */}
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50/90 border border-indigo-200 text-indigo-700 text-[11px] font-medium">
-                <MoveHorizontal className="w-3.5 h-3.5 text-indigo-600" />
-                按住下方图表直接左右拖动定位
-              </span>
-
-              {/* Instant sensor readings at timeline position */}
-              {currentFrame && (
-                <div className="hidden xl:flex items-center gap-1.5 text-[11px] font-mono ml-1">
-                  <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
-                    T1: {(currentFrame.temp_tank1 ?? currentFrame.temperature ?? 0).toFixed(1)}°C
-                  </span>
-                  <span className="px-1.5 py-0.5 rounded bg-orange-50 text-orange-800 border border-orange-200">
-                    T2: {(currentFrame.temp_tank2 ?? currentFrame.temperature ?? 0).toFixed(1)}°C
-                  </span>
-                  <span className="px-1.5 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200">
-                    P: {(currentFrame.pressure ?? 0).toFixed(2)}MPa
-                  </span>
-                  <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
-                    Q: {(currentFrame.flow_rate ?? 0).toFixed(1)}L/m
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* Right: Step buttons and Play/Pause */}
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => handleSeek(0)}
-                title="跳转至最早记录"
-                disabled={dataPoints.length === 0}
-                className="p-1 rounded bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 disabled:opacity-40 transition-colors"
-              >
-                <SkipBack className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => handleSeek(Math.max(0, timelineIndex - 1))}
-                title="单步后退1帧"
-                disabled={dataPoints.length === 0}
-                className="p-1 rounded bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 disabled:opacity-40 transition-colors"
-              >
-                <ChevronLeft className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => setIsPlayingTimeline((prev) => !prev)}
-                disabled={dataPoints.length === 0}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs disabled:opacity-40 transition-colors"
-              >
-                {isPlayingTimeline ? (
-                  <Pause className="w-3.5 h-3.5 fill-current" />
-                ) : (
-                  <Play className="w-3.5 h-3.5 fill-current" />
-                )}
-                <span>{isPlayingTimeline ? '暂停' : '播放'}</span>
-              </button>
-              <button
-                onClick={() => handleSeek(Math.min(dataPoints.length - 1, timelineIndex + 1))}
-                title="单步前进1帧"
-                disabled={dataPoints.length === 0}
-                className="p-1 rounded bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 disabled:opacity-40 transition-colors"
-              >
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => handleSeek(Math.max(0, dataPoints.length - 1))}
-                title="跳转至最新记录"
-                disabled={dataPoints.length === 0}
-                className="p-1 rounded bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 disabled:opacity-40 transition-colors"
-              >
-                <SkipForward className="w-3.5 h-3.5" />
-              </button>
-
-              {/* Speed selector */}
-              <div className="flex items-center bg-white rounded border border-slate-200 p-0.5 text-[11px] ml-1">
-                {[1, 2, 5].map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => setPlaySpeed(s)}
-                    className={`px-1.5 py-0.5 rounded font-medium transition-colors ${
-                      playSpeed === s
-                        ? 'bg-indigo-600 text-white'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    {s}x
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Row 2: History span selector, custom time, refresh, export */}
-          <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-slate-200/80 text-xs">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-slate-600 font-medium">采样跨度:</span>
-              {[50, 150, 300, 500, 1000].map((num) => (
-                <button
-                  key={num}
-                  onClick={() => {
-                    setHistoryLimit(num);
-                    fetchHistoricalRecords(num);
-                  }}
-                  className={`px-2 py-0.5 text-xs rounded border transition-colors ${
-                    historyLimit === num && !showCustomFilter
-                      ? 'bg-indigo-600 text-white border-indigo-600 font-semibold shadow-2xs'
-                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                  }`}
-                >
-                  {num}条
-                </button>
-              ))}
-              <button
-                onClick={() => setShowCustomFilter((prev) => !prev)}
-                className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded border transition-colors ${
-                  showCustomFilter
-                    ? 'bg-indigo-50 text-indigo-700 border-indigo-300'
-                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                }`}
-              >
-                <Calendar className="w-3 h-3" />
-                自定义时间段
-              </button>
-            </div>
-
-            <div className="flex items-center gap-2">
+          {/* History Mode Actions: 刷新数据 & 导出CSV & 时间筛选 */}
+          {viewMode === 'history' && !isPlayback && (
+            <div className="flex items-center gap-2 ml-auto sm:ml-0 flex-wrap">
               <button
                 onClick={() =>
                   fetchHistoricalRecords(
-                    historyLimit,
                     customStart || undefined,
                     customEnd || undefined
                   )
                 }
                 disabled={isLoadingHistory}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-50"
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs disabled:opacity-50"
               >
                 <RefreshCw
                   className={`w-3.5 h-3.5 ${
@@ -1409,15 +1503,27 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
                   if (params.toString()) exportUrl += `?${params.toString()}`;
                   window.open(exportUrl, '_blank');
                 }}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 transition-colors"
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs"
               >
                 <Download className="w-3.5 h-3.5" />
                 导出CSV
               </button>
+              <button
+                onClick={() => setShowCustomFilter((prev) => !prev)}
+                className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg border transition-colors shadow-2xs ${
+                  showCustomFilter
+                    ? 'bg-indigo-50 text-indigo-700 border-indigo-300'
+                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                }`}
+                title="按时间段筛选"
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                时间筛选
+              </button>
             </div>
-          </div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Custom Time Range Filter Accordion */}
       {!isPlayback && viewMode === 'history' && showCustomFilter && (
@@ -1440,42 +1546,26 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
               />
             </div>
 
-            <div className="flex items-center gap-1.5">
-              <label className="text-slate-600 font-medium">数量上限:</label>
-              <select
-                value={historyLimit}
-                onChange={(e) => setHistoryLimit(Number(e.target.value))}
-                className="bg-white border border-slate-300 rounded px-2 py-1 text-xs text-slate-800 focus:outline-indigo-500"
-              >
-                <option value={50}>50条</option>
-                <option value={150}>150条</option>
-                <option value={300}>300条</option>
-                <option value={500}>500条</option>
-                <option value={1000}>1000条</option>
-              </select>
-            </div>
-
             <button
               onClick={() =>
                 fetchHistoricalRecords(
-                  historyLimit,
                   customStart || undefined,
                   customEnd || undefined
                 )
               }
               className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium text-xs transition-colors shadow-xs"
             >
-              查询历史趋势
+              按时间段全量查询
             </button>
             <button
               onClick={() => {
                 setCustomStart('');
                 setCustomEnd('');
-                fetchHistoricalRecords(historyLimit);
+                fetchHistoricalRecords();
               }}
               className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 rounded font-medium text-xs transition-colors"
             >
-              重置
+              重置并载入全部历史
             </button>
           </div>
         </div>
@@ -1570,17 +1660,17 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
           <Database className="w-6 h-6 text-slate-400 mx-auto mb-2" />
           <p className="text-sm font-medium">暂无匹配的历史时序记录</p>
           <p className="text-xs text-slate-400 mt-1">
-            请尝试调整起止时间或选择【300条】预设
+            请尝试调整起止时间或载入全量时序
           </p>
           <button
             onClick={() => {
               setCustomStart('');
               setCustomEnd('');
-              fetchHistoricalRecords(300);
+              fetchHistoricalRecords();
             }}
             className="mt-3 px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-medium"
           >
-            载入最近300条历史记录
+            载入全部历史记录 (无极浏览)
           </button>
         </div>
       ) : (
@@ -1600,6 +1690,11 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
               playbackIndex={playbackIndex}
               timelineIndex={viewMode === 'history' ? timelineIndex : undefined}
               onSeek={handleSeek}
+              visibleStart={visibleStart}
+              visibleEnd={visibleEnd}
+              onPan={handlePan}
+              onWheelZoom={handleWheelZoom}
+              onResetZoom={handleResetZoom}
             />
           )}
           {activeTab === 't1' && (
@@ -1617,6 +1712,11 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
               playbackIndex={playbackIndex}
               timelineIndex={viewMode === 'history' ? timelineIndex : undefined}
               onSeek={handleSeek}
+              visibleStart={visibleStart}
+              visibleEnd={visibleEnd}
+              onPan={handlePan}
+              onWheelZoom={handleWheelZoom}
+              onResetZoom={handleResetZoom}
             />
           )}
           {activeTab === 't2' && (
@@ -1634,6 +1734,11 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
               playbackIndex={playbackIndex}
               timelineIndex={viewMode === 'history' ? timelineIndex : undefined}
               onSeek={handleSeek}
+              visibleStart={visibleStart}
+              visibleEnd={visibleEnd}
+              onPan={handlePan}
+              onWheelZoom={handleWheelZoom}
+              onResetZoom={handleResetZoom}
             />
           )}
 
@@ -1652,6 +1757,11 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
               playbackIndex={playbackIndex}
               timelineIndex={viewMode === 'history' ? timelineIndex : undefined}
               onSeek={handleSeek}
+              visibleStart={visibleStart}
+              visibleEnd={visibleEnd}
+              onPan={handlePan}
+              onWheelZoom={handleWheelZoom}
+              onResetZoom={handleResetZoom}
             />
           )}
 
@@ -1670,6 +1780,11 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
               playbackIndex={playbackIndex}
               timelineIndex={viewMode === 'history' ? timelineIndex : undefined}
               onSeek={handleSeek}
+              visibleStart={visibleStart}
+              visibleEnd={visibleEnd}
+              onPan={handlePan}
+              onWheelZoom={handleWheelZoom}
+              onResetZoom={handleResetZoom}
             />
           )}
         </div>

@@ -124,15 +124,16 @@ async def get_history(limit: int = 120, from_db: bool = False):
 async def query_history(
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
-    limit: int = 100,
+    limit: Optional[int] = None,
     offset: int = 0,
     order: str = "DESC",
 ):
     """Queries historical telemetry records stored in SQLite with time filtering and pagination."""
+    query_limit = limit if (limit is not None and limit > 0) else None
     records = state_manager.query_history(
         start_time=start_time,
         end_time=end_time,
-        limit=min(max(1, limit), 1000),
+        limit=query_limit,
         offset=max(0, offset),
         order=order,
     )

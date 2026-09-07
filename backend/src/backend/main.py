@@ -3,9 +3,10 @@ import json
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import List, Optional
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -112,15 +113,85 @@ async def get_system_status():
 
 
 @app.get("/api/history", response_model=List[TelemetryData])
-async def get_history(limit: int = 120):
-    """Returns recent telemetry time-series history for charts."""
+async def get_history(limit: int = 120, from_db: bool = False):
+    """Returns recent telemetry time-series history for charts (from in-memory ring buffer or SQLite)."""
+    if from_db:
+        return state_manager.query_history(limit=limit, order="ASC")
     return state_manager.get_history(limit=limit)
+
+
+@app.get("/api/history/query")
+async def query_history(
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
+    order: str = "DESC",
+):
+    """Queries historical telemetry records stored in SQLite with time filtering and pagination."""
+    records = state_manager.query_history(
+        start_time=start_time,
+        end_time=end_time,
+        limit=min(max(1, limit), 1000),
+        offset=max(0, offset),
+        order=order,
+    )
+    total = state_manager.get_history_count(start_time=start_time, end_time=end_time)
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "records": [r.model_dump(mode="json") for r in records],
+    }
+
+
+@app.get("/api/history/stats")
+async def get_history_stats(
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+):
+    """Returns statistical analysis (min, max, avg, count) for historical telemetry in SQLite."""
+    return state_manager.get_history_stats(start_time=start_time, end_time=end_time)
+
+
+@app.get("/api/history/export")
+async def export_history_csv(
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    limit: int = 5000,
+):
+    """Exports historical telemetry from SQLite as a downloadable CSV file."""
+    csv_content = state_manager.export_history_csv(
+        start_time=start_time,
+        end_time=end_time,
+        limit=min(max(1, limit), 10000),
+    )
+    filename = f"telemetry_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/api/alarms", response_model=List[AlarmEvent])
 async def get_alarms(limit: int = 50):
-    """Returns alarm and event logs."""
+    """Returns recent active/unresolved and recent alarm event logs."""
     return state_manager.get_alarms(limit=limit)
+
+
+@app.get("/api/alarms/history", response_model=List[AlarmEvent])
+async def get_alarm_history(
+    limit: int = 100,
+    level: Optional[str] = None,
+    resolved: Optional[bool] = None,
+):
+    """Queries all historical alarms persisted in SQLite."""
+    return state_manager.db.get_alarm_history(
+        limit=min(max(1, limit), 500),
+        level=level,
+        resolved=resolved,
+    )
 
 
 @app.delete("/api/alarms")

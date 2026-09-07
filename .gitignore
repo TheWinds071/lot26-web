@@ -18,6 +18,15 @@ __pycache__/
 *.py[oc]
 *.egg-info/
 
+# SQLite & Data
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+data/
+backend/data/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

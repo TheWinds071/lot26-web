@@ -5,6 +5,7 @@ from collections import deque
 from datetime import datetime
 from typing import Callable, Deque, List, Optional, Set
 
+from backend.database import DatabaseManager, db_manager
 from backend.models import (
     AlarmEvent,
     DeviceState,
@@ -17,15 +18,30 @@ logger = logging.getLogger("state_manager")
 
 
 class StateManager:
-    """Manages single-pipe dual-tank telemetry, bidirectional pump state, alarms, and auto-control logic."""
+    """Manages single-pipe dual-tank telemetry, bidirectional pump state, alarms, auto-control logic, and SQLite persistence."""
 
-    def __init__(self, history_limit: int = 300, alarm_limit: int = 100):
+    def __init__(self, history_limit: int = 300, alarm_limit: int = 100, db: Optional[DatabaseManager] = None):
         self.history_limit = history_limit
         self.alarm_limit = alarm_limit
+        self.db: DatabaseManager = db or db_manager
 
         self.latest_telemetry: Optional[TelemetryData] = None
         self.telemetry_history: Deque[TelemetryData] = deque(maxlen=history_limit)
         self.alarms: Deque[AlarmEvent] = deque(maxlen=alarm_limit)
+
+        # Preload recent historical data from SQLite into in-memory ring buffer
+        try:
+            persisted_records = self.db.get_recent_telemetry(limit=history_limit)
+            if persisted_records:
+                self.telemetry_history.extend(persisted_records)
+                self.latest_telemetry = persisted_records[-1]
+                logger.info(f"Loaded {len(persisted_records)} historical telemetry records from SQLite.")
+
+            persisted_alarms = self.db.get_alarm_history(limit=alarm_limit)
+            if persisted_alarms:
+                self.alarms.extend(persisted_alarms)
+        except Exception as e:
+            logger.warning(f"Failed to preload SQLite historical records: {e}")
 
         self.device_state = DeviceState(
             auto_mode=True,
@@ -77,6 +93,10 @@ class StateManager:
                 existing.message = message
                 existing.value = value
                 existing.timestamp = datetime.now()
+                try:
+                    self.db.insert_or_update_alarm(existing)
+                except Exception as e:
+                    logger.error(f"Error persisting updated alarm to SQLite: {e}")
                 return existing
 
         alarm = AlarmEvent(
@@ -89,6 +109,11 @@ class StateManager:
             resolved=False,
         )
         self.alarms.appendleft(alarm)
+        try:
+            self.db.insert_or_update_alarm(alarm)
+        except Exception as e:
+            logger.error(f"Error persisting new alarm to SQLite: {e}")
+
         logger.warning(f"[ALARM] [{level}] {actual_type}: {message}")
         self._notify("alarm", alarm.model_dump(mode="json"))
         return alarm
@@ -98,13 +123,23 @@ class StateManager:
             if alarm.type == alarm_type and not alarm.resolved:
                 alarm.resolved = True
                 self._notify("alarm_resolved", {"type": alarm_type, "id": alarm.id})
+        try:
+            self.db.resolve_alarm(alarm_type)
+        except Exception as e:
+            logger.error(f"Error resolving alarm in SQLite: {e}")
 
     def process_telemetry(self, telemetry: TelemetryData) -> dict:
-        """Ingests new dual-tank telemetry, runs auto-control rule engine, returns control decisions."""
+        """Ingests new dual-tank telemetry, records to SQLite, runs auto-control rule engine, returns control decisions."""
         self.latest_telemetry = telemetry
         self.telemetry_history.append(telemetry)
         self.last_packet_time = datetime.now()
         self.tcp_client_connected = True
+
+        # Persist to SQLite
+        try:
+            self.db.insert_telemetry(telemetry)
+        except Exception as e:
+            logger.error(f"Failed to record telemetry to SQLite: {e}")
 
         # Run auto-control rule engine if auto mode is on and not emergency stopped
         control_action_taken = self._evaluate_rules(telemetry)
@@ -306,6 +341,52 @@ class StateManager:
         items = list(self.telemetry_history)
         return items[-limit:]
 
+    def query_history(
+        self,
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+        order: str = "DESC",
+    ) -> List[TelemetryData]:
+        """Queries persistent history from SQLite with optional time range and pagination."""
+        return self.db.query_telemetry(
+            start_time=start_time,
+            end_time=end_time,
+            limit=limit,
+            offset=offset,
+            order=order,
+        )
+
+    def get_history_stats(
+        self,
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None,
+    ) -> dict:
+        """Returns statistical aggregations from SQLite history."""
+        return self.db.get_telemetry_stats(start_time=start_time, end_time=end_time)
+
+    def get_history_count(
+        self,
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None,
+    ) -> int:
+        """Returns total count of persistent records from SQLite."""
+        return self.db.get_telemetry_count(start_time=start_time, end_time=end_time)
+
+    def export_history_csv(
+        self,
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None,
+        limit: int = 5000,
+    ) -> str:
+        """Exports historical telemetry to CSV format."""
+        return self.db.export_telemetry_csv(
+            start_time=start_time,
+            end_time=end_time,
+            limit=limit,
+        )
+
     def get_alarms(self, limit: int = 50) -> List[AlarmEvent]:
         return list(self.alarms)[:limit]
 
@@ -316,3 +397,4 @@ class StateManager:
 
 # Global singleton instance
 state_manager = StateManager()
+

@@ -9,10 +9,17 @@ import time
 class SinglePipeDualTankSimulator:
     """Simulates physical dynamics of a single-pipe dual-tank water circulation system with bidirectional pump."""
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 8888, interval: float = 1.0):
+    def __init__(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 8888,
+        interval: float = 1.0,
+        max_flow: float = 0.4,
+    ):
         self.host = host
         self.port = port
         self.interval = interval
+        self.max_flow = max_flow
 
         # Physical state variables for 2 water tanks connected by 1 single pipe
         self.temp_tank1 = 48.0   # Tank 1 Temp (°C)
@@ -45,16 +52,17 @@ class SinglePipeDualTankSimulator:
             target_pressure = 0.04
         else:
             speed_ratio = self.pump_speed / 100.0
-            target_flow = speed_ratio * 30.0
+            target_flow = speed_ratio * self.max_flow
             target_pressure = 0.12 + speed_ratio * 0.46
 
         if self.inject_overpressure:
             target_pressure = 0.95  # Exceeds max 0.8 MPa
         if self.inject_dry_run:
-            target_flow = 1.2       # Below min 5.0 L/min
+            target_flow = 0.01 if self.max_flow <= 1.0 else 1.2
 
         # Add slight natural measurement noise
-        self.flow_rate += (target_flow - self.flow_rate) * 0.4 + random.uniform(-0.15, 0.15)
+        noise_flow = random.uniform(-0.005, 0.005) if self.max_flow <= 1.0 else random.uniform(-0.15, 0.15)
+        self.flow_rate += (target_flow - self.flow_rate) * 0.4 + noise_flow
         self.flow_rate = max(0.0, self.flow_rate)
 
         self.pressure += (target_pressure - self.pressure) * 0.4 + random.uniform(-0.01, 0.01)
@@ -172,9 +180,15 @@ def main():
     parser.add_argument("--host", default="127.0.0.1", help="TCP server host")
     parser.add_argument("--port", type=int, default=8888, help="TCP server port")
     parser.add_argument("--interval", type=float, default=1.0, help="Reporting interval in seconds")
+    parser.add_argument("--max-flow", type=float, default=0.4, help="Maximum flow rate (default: 0.4 L/min)")
     args = parser.parse_args()
 
-    sim = SinglePipeDualTankSimulator(host=args.host, port=args.port, interval=args.interval)
+    sim = SinglePipeDualTankSimulator(
+        host=args.host,
+        port=args.port,
+        interval=args.interval,
+        max_flow=args.max_flow,
+    )
     try:
         asyncio.run(sim.run())
     except KeyboardInterrupt:

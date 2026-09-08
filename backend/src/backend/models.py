@@ -47,9 +47,9 @@ class ThresholdConfig(BaseModel):
     pressure_min: float = Field(default=0.10, description="Minimum pipe pressure threshold (MPa)")
     pressure_max: float = Field(default=0.80, description="Maximum pipe pressure safe threshold (MPa)")
 
-    # Flow rate rules (L/min)
-    flow_rate_min: float = Field(default=5.0, description="Minimum flow rate threshold to prevent dry-run (L/min)")
-    flow_rate_target: float = Field(default=25.0, description="Target flow rate (L/min)")
+    # Flow rate rules (L/min) - Default adapted to micro-flow (0 ~ 0.4 L/min)
+    flow_rate_min: float = Field(default=0.05, description="Minimum flow rate threshold to prevent dry-run (L/min)")
+    flow_rate_target: float = Field(default=0.30, description="Target flow rate (L/min)")
 
 
 class AlarmEvent(BaseModel):

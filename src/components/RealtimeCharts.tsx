@@ -396,7 +396,7 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
                 fontSize="10"
                 textAnchor="end"
               >
-                {val.toFixed(dataKey === 'pressure' ? 1 : 0)}
+                {val.toFixed(dataKey === 'pressure' ? 1 : (dataKey === 'flow_rate' && actualMax <= 1.0 ? 2 : 0))}
               </text>
             </g>
           );
@@ -1765,28 +1765,32 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
             />
           )}
 
-          {(activeTab === 'all' || activeTab === 'flow') && (
-            <SingleChartItem
-              dataKey="flow_rate"
-              color="#059669"
-              unit="L/min"
-              title="槽间循环流量趋势 (L/min)"
-              minVal={0.0}
-              maxVal={35}
-              dataPoints={dataPoints}
-              width={width}
-              height={height}
-              padding={padding}
-              playbackIndex={playbackIndex}
-              timelineIndex={viewMode === 'history' ? timelineIndex : undefined}
-              onSeek={handleSeek}
-              visibleStart={visibleStart}
-              visibleEnd={visibleEnd}
-              onPan={handlePan}
-              onWheelZoom={handleWheelZoom}
-              onResetZoom={handleResetZoom}
-            />
-          )}
+          {(activeTab === 'all' || activeTab === 'flow') && (() => {
+            const maxFlowInData = dataPoints.length > 0 ? Math.max(...dataPoints.map((d) => d.flow_rate ?? 0), 0) : 0;
+            const dynamicFlowMaxVal = maxFlowInData <= 1.0 ? 0.45 : 35;
+            return (
+              <SingleChartItem
+                dataKey="flow_rate"
+                color="#059669"
+                unit="L/min"
+                title="槽间循环流量趋势 (L/min)"
+                minVal={0.0}
+                maxVal={dynamicFlowMaxVal}
+                dataPoints={dataPoints}
+                width={width}
+                height={height}
+                padding={padding}
+                playbackIndex={playbackIndex}
+                timelineIndex={viewMode === 'history' ? timelineIndex : undefined}
+                onSeek={handleSeek}
+                visibleStart={visibleStart}
+                visibleEnd={visibleEnd}
+                onPan={handlePan}
+                onWheelZoom={handleWheelZoom}
+                onResetZoom={handleResetZoom}
+              />
+            );
+          })()}
         </div>
       )}
     </div>

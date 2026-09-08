@@ -73,7 +73,9 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
     ? "bg-emerald-50 text-emerald-700 border-emerald-200"
     : "bg-slate-100 text-slate-700 border-slate-200";
 
-  if (isPumpActive && flow < flowMin) {
+  // 自适应防干烧阈值判断（若设置阈值大于 1.0 但当前系统为 0~0.4 微流量，按微流量安全下限 0.02 兼容）
+  const effectiveFlowMin = flowMin > 1.0 && flow <= 1.0 ? 0.02 : flowMin;
+  if (isPumpActive && flow < effectiveFlowMin) {
     flowStatusText = "流量过低 (防干烧)";
     flowStatusClass = "bg-rose-50 text-rose-700 border-rose-200";
   }
@@ -81,7 +83,9 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
   const t1Percentage = Math.min(100, Math.max(0, (t1 / 100) * 100));
   const t2Percentage = Math.min(100, Math.max(0, (t2 / 100) * 100));
   const pressPercentage = Math.min(100, Math.max(0, (press / 1.0) * 100));
-  const flowPercentage = Math.min(100, Math.max(0, (flow / 40.0) * 100));
+  // 自适应流量进度条：微流量按 0.40 L/min 满量程，常规流量按 40.0 L/min
+  const maxDisplayFlow = flow <= 1.0 ? 0.4 : 40.0;
+  const flowPercentage = Math.min(100, Math.max(0, (flow / maxDisplayFlow) * 100));
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">

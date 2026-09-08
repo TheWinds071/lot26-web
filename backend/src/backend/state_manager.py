@@ -220,12 +220,17 @@ class StateManager:
         else:
             self.resolve_alarm("TEMP_DIFF")
 
-        # 3. Flow Rate / Dry-run Safety Check
-        if self.device_state.pump_active and telemetry.flow_rate < self.thresholds.flow_rate_min:
+        # 3. Flow Rate / Dry-run Safety Check (自适应微流量 0~0.4 L/min)
+        effective_flow_min = (
+            0.02
+            if (self.thresholds.flow_rate_min > 1.0 and telemetry.flow_rate <= 1.0)
+            else self.thresholds.flow_rate_min
+        )
+        if self.device_state.pump_active and telemetry.flow_rate < effective_flow_min:
             self.add_alarm(
                 level="WARNING",
                 type="LOW_FLOW",
-                message=f"管道流速过低/防干烧: {telemetry.flow_rate:.2f} L/min (下限 {self.thresholds.flow_rate_min:.2f} L/min)",
+                message=f"管道流速过低/防干烧: {telemetry.flow_rate:.2f} L/min (下限 {effective_flow_min:.2f} L/min)",
                 value=telemetry.flow_rate,
             )
             if self.device_state.heater_active:

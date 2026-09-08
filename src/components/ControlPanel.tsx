@@ -33,7 +33,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const [tempMax, setTempMax] = useState<number>(75);
   const [tempDiffMax, setTempDiffMax] = useState<number>(15);
   const [pressMax, setPressMax] = useState<number>(0.80);
-  const [flowMin, setFlowMin] = useState<number>(5.0);
+  const [flowMin, setFlowMin] = useState<number>(0.05);
   const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
 
   useEffect(() => {
@@ -43,7 +43,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       setTempMax(thresholds.temp_max);
       setTempDiffMax(thresholds.temp_diff_max ?? 15);
       setPressMax(thresholds.pressure_max);
-      setFlowMin(thresholds.flow_rate_min);
+      setFlowMin(thresholds.flow_rate_min > 1.0 ? 0.05 : thresholds.flow_rate_min);
     }
   }, [thresholds]);
 
@@ -57,7 +57,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       pressure_min: 0.10,
       pressure_max: Number(pressMax),
       flow_rate_min: Number(flowMin),
-      flow_rate_target: 25.0,
+      flow_rate_target: Number(flowMin) <= 1.0 ? 0.30 : 25.0,
     });
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2000);
@@ -377,7 +377,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               <div className="flex rounded-lg shadow-xs">
                 <input
                   type="number"
-                  step="0.5"
+                  step="0.01"
                   value={flowMin}
                   onChange={(e) => setFlowMin(Number(e.target.value))}
                   className="w-full bg-white rounded-l-lg border border-gray-300 px-3 py-1.5 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 font-mono"

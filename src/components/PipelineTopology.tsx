@@ -26,8 +26,13 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
   const lvl1 = telemetry?.water_level_tank1 ?? 75.0;
   const lvl2 = telemetry?.water_level_tank2 ?? 65.0;
 
-  // Animation duration based on flow rate & pump speed
-  const flowAnimDuration = isPumpOn && flow > 0.5 ? Math.max(0.4, 3.5 - (flow / 30) * 2.8) : 0;
+  // Animation duration based on flow rate & pump speed (Adaptive to 0 ~ 0.4 L/min micro-flow)
+  const maxFlowRef = flow <= 1.0 ? 0.4 : 30.0;
+  const flowRatio = Math.min(1.0, Math.max(0, flow / maxFlowRef));
+  const activeRate = flowRatio > 0 ? flowRatio : (pumpSpeed > 0 ? pumpSpeed / 100 : 0.25);
+  const flowAnimDuration = isPumpOn && (flow > 0.001 || pumpSpeed > 0)
+    ? Math.max(0.35, Number((2.6 - activeRate * 2.0).toFixed(2)))
+    : 0;
   const pumpRotateDuration = Math.max(0.3, 1.8 - (pumpSpeed / 100) * 1.4);
 
   return (
@@ -94,16 +99,16 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
             <style>
               {`
                 @keyframes flowForwardDash {
-                  from { stroke-dashoffset: 80; }
+                  from { stroke-dashoffset: 112; }
                   to { stroke-dashoffset: 0; }
                 }
                 @keyframes flowReverseDash {
                   from { stroke-dashoffset: 0; }
-                  to { stroke-dashoffset: 80; }
+                  to { stroke-dashoffset: 112; }
                 }
                 .single-pipe-flow {
                   animation: ${
-                    isPumpOn
+                    isPumpOn && flowAnimDuration > 0
                       ? isForward
                         ? `flowForwardDash ${flowAnimDuration}s linear infinite`
                         : `flowReverseDash ${flowAnimDuration}s linear infinite`

@@ -21,11 +21,11 @@ class SinglePipeDualTankSimulator:
         self.water_level_tank2 = 65.0  # Tank 2 level (%)
 
         self.ambient_temp = 22.0  # Ambient room temp (°C)
-        self.pressure = 0.35      # Single pipe pressure (MPa)
-        self.flow_rate = 18.0     # Pipe flow rate (L/min)
+        self.pressure = 0.04      # Single pipe pressure (MPa, idle)
+        self.flow_rate = 0.0      # Pipe flow rate (L/min, idle)
 
         # Actuator states (updated via TCP server downlink ACKs)
-        self.pump_active = True
+        self.pump_active = False
         self.pump_direction = "FORWARD"  # "FORWARD" (1->2) or "REVERSE" (2->1)
         self.pump_speed = 60      # %
         self.heater_active = False

@@ -22,8 +22,8 @@ class TelemetryData(BaseModel):
 
 class DeviceState(BaseModel):
     """Device Actuator and Running State"""
-    auto_mode: bool = Field(default=True, description="Auto control mode enabled")
-    pump_active: bool = Field(default=True, description="Water pump running state")
+    auto_mode: bool = Field(default=False, description="Auto control mode enabled")
+    pump_active: bool = Field(default=False, description="Water pump running state")
     pump_direction: str = Field(
         default="FORWARD",
         description="Pump flow direction: 'FORWARD' (Tank 1 -> Tank 2) or 'REVERSE' (Tank 2 -> Tank 1)",

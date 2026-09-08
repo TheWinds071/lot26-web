@@ -19,7 +19,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   onControlHeater,
   onUpdateThresholds,
 }) => {
-  const isAuto = deviceState?.auto_mode ?? true;
+  const isAuto = deviceState?.auto_mode ?? false;
   const isEmergency = deviceState?.emergency_stop ?? false;
   const isPumpActive = deviceState?.pump_active ?? false;
   const pumpSpeed = deviceState?.pump_speed ?? 60;

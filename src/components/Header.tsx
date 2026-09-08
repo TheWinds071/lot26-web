@@ -27,7 +27,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   const isEmergency = status?.device_state.emergency_stop ?? false;
   const isTcpConnected = status?.tcp_client_connected ?? false;
-  const autoMode = status?.device_state.auto_mode ?? true;
+  const autoMode = status?.device_state.auto_mode ?? false;
   const alarmCount = status?.active_alarms?.length || 0;
 
   return (

@@ -44,8 +44,8 @@ class StateManager:
             logger.warning(f"Failed to preload SQLite historical records: {e}")
 
         self.device_state = DeviceState(
-            auto_mode=True,
-            pump_active=True,
+            auto_mode=False,
+            pump_active=False,
             pump_direction="FORWARD",  # "FORWARD": Tank 1 -> Tank 2, "REVERSE": Tank 2 -> Tank 1
             pump_speed=60,
             heater_active=False,

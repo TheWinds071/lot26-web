@@ -205,7 +205,7 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
           <span className="text-xs font-medium text-gray-500 block">管道双向流量 (Flow Rate)</span>
           <div className="flex items-baseline gap-1.5 mt-1 mb-2">
             <span className="text-3xl font-bold tracking-tight text-gray-900 font-mono">
-              {flow.toFixed(1)}
+              {flow.toFixed(2)}
             </span>
             <span className="text-sm font-medium text-gray-500">L/min</span>
           </div>

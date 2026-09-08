@@ -225,7 +225,7 @@ class StateManager:
             self.add_alarm(
                 level="WARNING",
                 type="LOW_FLOW",
-                message=f"管道流速过低/防干烧: {telemetry.flow_rate:.1f} L/min (下限 {self.thresholds.flow_rate_min:.1f} L/min)",
+                message=f"管道流速过低/防干烧: {telemetry.flow_rate:.2f} L/min (下限 {self.thresholds.flow_rate_min:.2f} L/min)",
                 value=telemetry.flow_rate,
             )
             if self.device_state.heater_active:

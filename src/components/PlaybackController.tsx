@@ -357,7 +357,7 @@ export const PlaybackController: React.FC<PlaybackControllerProps> = ({
               压力: {currentRecord.pressure?.toFixed(2)} MPa
             </span>
             <span className="px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800">
-              流量: {currentRecord.flow_rate?.toFixed(1)} L/min
+              流量: {currentRecord.flow_rate?.toFixed(2)} L/min
             </span>
           </div>
         )}

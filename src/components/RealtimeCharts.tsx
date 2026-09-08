@@ -335,7 +335,7 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
         </div>
         <div className="flex items-baseline gap-1">
           <span className="text-base font-bold font-mono text-gray-900 transition-colors">
-            {displayVal.toFixed(dataKey === 'pressure' ? 2 : 1)}
+            {displayVal.toFixed(dataKey === 'pressure' || dataKey === 'flow_rate' ? 2 : 1)}
           </span>
           <span className="text-xs text-gray-500 font-normal">{unit}</span>
         </div>
@@ -569,7 +569,7 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
                 fontWeight="bold"
                 fontFamily="ui-monospace, Consolas, monospace"
               >
-                {hoveredVal.toFixed(dataKey === 'pressure' ? 2 : 1)} {unit}
+                {hoveredVal.toFixed(dataKey === 'pressure' || dataKey === 'flow_rate' ? 2 : 1)} {unit}
               </text>
             </g>
           </g>
@@ -1637,12 +1637,12 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
               <div className="flex items-center justify-between text-[11px] text-emerald-800 font-medium mb-1">
                 <span>循环流量</span>
                 <span className="font-mono font-semibold">
-                  均 {stats.flow.avg.toFixed(1)} L/min
+                  均 {stats.flow.avg.toFixed(2)} L/min
                 </span>
               </div>
               <div className="text-[10px] text-slate-500 font-mono flex justify-between">
-                <span>低: {stats.flow.min.toFixed(1)}</span>
-                <span>高: {stats.flow.max.toFixed(1)}</span>
+                <span>低: {stats.flow.min.toFixed(2)}</span>
+                <span>高: {stats.flow.max.toFixed(2)}</span>
               </div>
             </div>
           </div>

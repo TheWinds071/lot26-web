@@ -60,8 +60,8 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
             <ArrowLeftRight className="w-3.5 h-3.5" />
             {isPumpOn
               ? isForward
-                ? `正转流向: 水槽1 ➔ 水槽2 (${flow.toFixed(1)} L/min)`
-                : `反转流向: 水槽2 ➔ 水槽1 (${flow.toFixed(1)} L/min)`
+                ? `正转流向: 水槽1 ➔ 水槽2 (${flow.toFixed(2)} L/min)`
+                : `反转流向: 水槽2 ➔ 水槽1 (${flow.toFixed(2)} L/min)`
               : '水泵停止 (流体静止)'}
           </span>
           <span
@@ -269,7 +269,7 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
           {/* 3. Bidirectional Flow Rate Meter (Right side of pump, x = 630) */}
           <g transform="translate(630, 140)">
             <rect x="0" y="10" width="84" height="50" rx="6" fill="#ffffff" stroke="#10b981" strokeWidth="2" />
-            <text x="42" y="32" fill="#059669" fontSize="12" fontWeight="bold" textAnchor="middle">{flow.toFixed(1)}</text>
+            <text x="42" y="32" fill="#059669" fontSize="12" fontWeight="bold" textAnchor="middle">{flow.toFixed(2)}</text>
             <text x="42" y="46" fill="#64748b" fontSize="10" textAnchor="middle">L/min</text>
             <text x="42" y="74" fill="#334155" fontSize="11" fontWeight="600" textAnchor="middle">双向流量传感器</text>
           </g>

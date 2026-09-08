@@ -127,7 +127,7 @@ class SinglePipeDualTankSimulator:
                         f"📤 Telemetry Sent -> Tank1: {payload['temp_tank1']:4.1f}°C | "
                         f"Tank2: {payload['temp_tank2']:4.1f}°C | "
                         f"Press: {payload['pressure']:4.2f}MPa | "
-                        f"Flow: {payload['flow_rate']:4.1f}L/min | "
+                        f"Flow: {payload['flow_rate']:5.2f}L/min | "
                         f"Pump: [{'ON' if self.pump_active else 'OFF'} {dir_label} ({self.pump_speed}%), "
                         f"Heater: {'ON' if self.heater_active else 'OFF'} ({self.heater_power}%)]"
                     )

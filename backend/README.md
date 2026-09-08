@@ -21,6 +21,63 @@
 - [`simulator.py`](file:///home/TheWinds/Study/WebProject/lot26/backend/simulator.py): 单管双水槽物理仿真客户端（模拟水泵正转 1➔2 / 反转 2➔1 下的流体输送与热混合）。
 - [`client_test.py`](file:///home/TheWinds/Study/WebProject/lot26/backend/client_test.py): 单管双水槽 TCP 报文发送测试脚本。
 
+## 核心控制接口与 JSON 报文规范 (水泵与加热模块)
+
+系统支持前端通过 **HTTP RESTful API** 或 **WebSocket** 发送执行器控制报文，后端接收并处理后，同步向底层 TCP 客户端/PLC 广播下行控制指令：
+
+### 1. 水泵控制 (`Pump Control`)
+- **HTTP 请求**：`POST /api/control/pump`
+  ```json
+  {
+    "active": true,
+    "speed": 60,
+    "direction": "FORWARD"
+  }
+  ```
+- **WebSocket 请求**：
+  ```json
+  {
+    "action": "set_pump",
+    "active": true,
+    "speed": 60,
+    "direction": "FORWARD"
+  }
+  ```
+- **TCP 硬件广播指令**：
+  ```json
+  {
+    "cmd": "PUMP_CONTROL",
+    "pump_active": true,
+    "pump_speed": 60,
+    "pump_direction": "FORWARD"
+  }
+  ```
+
+### 2. 加热模块控制 (`Heater Control`)
+- **HTTP 请求**：`POST /api/control/heater`
+  ```json
+  {
+    "active": true,
+    "power": 100
+  }
+  ```
+- **WebSocket 请求**：
+  ```json
+  {
+    "action": "set_heater",
+    "active": true,
+    "power": 100
+  }
+  ```
+- **TCP 硬件广播指令**：
+  ```json
+  {
+    "cmd": "HEATER_CONTROL",
+    "heater_active": true,
+    "heater_power": 100
+  }
+  ```
+
 ## 历史数据 RESTful API
 
 - `GET /api/history`: 获取近期待渲染历史记录（支持 `?limit=120&from_db=true`）。

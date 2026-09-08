@@ -225,22 +225,139 @@ uv run python simulator.py --interval 1.0
 
 ## 七、API 与 WebSocket 接口
 
-### REST 接口
+### 1. 核心控制接口与 JSON 报文规范 (水泵与加热模块)
 
-- `GET /api/status`: 获取系统实时状态
-- `GET /api/history`: 获取近 120 组遥测时序数据
-- `GET /api/alarms`: 获取告警历史
+前端控制面板点击开关、调节转速/功率或切换方向时，系统支持 **HTTP REST API** 与 **WebSocket** 两种途径发送控制 JSON。
+
+#### (1) 点击单管路双向水泵开关与调速 (`Pump Control`)
+
+**途径 A：HTTP RESTful POST**
+- **请求地址**：`POST /api/control/pump`
+- **请求头**：`Content-Type: application/json`
+- **请求 JSON 报文**：
+  ```json
+  {
+    "active": true,
+    "speed": 60,
+    "direction": "FORWARD"
+  }
+  ```
+  - `active` (`boolean`, 必填)：水泵开关状态，`true` 为启动运行，`false` 为停止运行。
+  - `speed` (`integer`, 可选)：水泵转速百分比，范围 `0` ~ `100`（默认 `60`）。
+  - `direction` (`string`, 可选)：水流方向，`"FORWARD"` 为正转（水槽1 ➔ 水槽2），`"REVERSE"` 为反转（水槽2 ➔ 水槽1）。
+
+**途径 B：WebSocket 双向通道 (`/ws/telemetry`)**
+- **发送 JSON 报文**：
+  ```json
+  {
+    "action": "set_pump",
+    "active": true,
+    "speed": 60,
+    "direction": "FORWARD"
+  }
+  ```
+
+**服务端响应与执行器下行：**
+- **HTTP / WebSocket 响应的设备状态 JSON (`DeviceState`)**：
+  ```json
+  {
+    "auto_mode": false,
+    "pump_active": true,
+    "pump_direction": "FORWARD",
+    "pump_speed": 60,
+    "heater_active": false,
+    "heater_power": 0,
+    "emergency_stop": false,
+    "last_updated": "2026-09-08T16:35:00.123456"
+  }
+  ```
+- **TCP 服务端向底层硬件/PLC 广播下发的控制指令 JSON**：
+  ```json
+  {
+    "cmd": "PUMP_CONTROL",
+    "pump_active": true,
+    "pump_speed": 60,
+    "pump_direction": "FORWARD"
+  }
+  ```
+
+---
+
+#### (2) 点击加热模块开关与功率调节 (`Heater Control`)
+
+**途径 A：HTTP RESTful POST**
+- **请求地址**：`POST /api/control/heater`
+- **请求头**：`Content-Type: application/json`
+- **请求 JSON 报文**：
+  ```json
+  {
+    "active": true,
+    "power": 100
+  }
+  ```
+  - `active` (`boolean`, 必填)：加热模块开关状态，`true` 为开启加热，`false` 为关闭加热。
+  - `power` (`integer`, 可选)：加热功率百分比，范围 `0` ~ `100`（开启默认 `100`，关闭设为 `0`）。
+
+**途径 B：WebSocket 双向通道 (`/ws/telemetry`)**
+- **发送 JSON 报文**：
+  ```json
+  {
+    "action": "set_heater",
+    "active": true,
+    "power": 100
+  }
+  ```
+
+**服务端响应与执行器下行：**
+- **HTTP / WebSocket 响应的设备状态 JSON (`DeviceState`)**：
+  ```json
+  {
+    "auto_mode": false,
+    "pump_active": true,
+    "pump_direction": "FORWARD",
+    "pump_speed": 60,
+    "heater_active": true,
+    "heater_power": 100,
+    "emergency_stop": false,
+    "last_updated": "2026-09-08T16:35:00.123456"
+  }
+  ```
+- **TCP 服务端向底层硬件/PLC 广播下发的控制指令 JSON**：
+  ```json
+  {
+    "cmd": "HEATER_CONTROL",
+    "heater_active": true,
+    "heater_power": 100
+  }
+  ```
+
+---
+
+### 2. 其他 RESTful API 列表
+
+- `GET /api/status`: 获取系统实时状态（含 telemetry、device_state、thresholds、active_alarms）
+- `GET /api/history`: 获取近期待渲染遥测历史记录（`?limit=120&from_db=false`）
+- `GET /api/history/query`: 分页与按时间范围查询 SQLite 历史时序数据
+- `GET /api/history/stats`: 获取时序历史统计指标汇总（极值、均值等）
+- `GET /api/history/export`: 导出时序历史 CSV 报表
+- `GET /api/alarms`: 获取当前活跃告警
+- `GET /api/alarms/history`: 获取 SQLite 持久化历史告警
 - `DELETE /api/alarms`: 清空告警记录
 - `POST /api/control/mode`: 切换模式 `{"auto_mode": true | false}`
-- `POST /api/control/pump`: 控制水泵正反转及转速 `{"active": true, "speed": 80, "direction": "FORWARD" | "REVERSE"}`
-- `POST /api/control/heater`: 手动控制加热器 `{"active": true, "power": 100}`
 - `POST /api/control/emergency_stop`: 触发/解除急停 `{"emergency_stop": true | false}`
-- `GET /api/config/thresholds`: 获取自控阈值参数
-- `POST /api/config/thresholds`: 修改保存自控阈值参数
+- `GET /api/config/thresholds`: 获取自控阈值规则
+- `POST /api/config/thresholds`: 更新并保存自控阈值规则
 
-### WebSocket 接口
+### 3. WebSocket 实时通信接口
 
-- `ws://localhost:8000/ws/telemetry`: 全双工实时数据流推送与远程控制通道。
+- **连接端点**：`ws://localhost:8000/ws/telemetry`
+- **下行推送事件类型**：
+  - `init`: 首次建立连接时推送当前完整系统状态及历史数据
+  - `telemetry`: 每次收到传感器数据后的实时状态全量推送
+  - `device_state_updated`: 执行器动作、转速、方向变更推送
+  - `thresholds_updated`: 阈值配置更新广播
+  - `alarm`: 新增越限告警实时广播
+  - `alarm_resolved`: 告警自愈与解除广播
 
 ---
 

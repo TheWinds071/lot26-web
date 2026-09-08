@@ -233,8 +233,10 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
           <g transform="translate(320, 120)">
             <line x1="20" y1="55" x2="20" y2="28" stroke="#94a3b8" strokeWidth="3" />
             <circle cx="20" cy="14" r="22" fill="#ffffff" stroke="#0284c7" strokeWidth="2" />
-            <text x="20" y="12" fill="#0284c7" fontSize="11" fontWeight="bold" textAnchor="middle">{press.toFixed(2)}</text>
-            <text x="20" y="23" fill="#64748b" fontSize="9" textAnchor="middle">MPa</text>
+            <text x="20" y="12" fill="#0284c7" fontSize={press >= 10000 ? "9.5" : "11"} fontWeight="bold" textAnchor="middle">
+              {press >= 10 ? Math.round(press) : press.toFixed(1)}
+            </text>
+            <text x="20" y="23" fill="#64748b" fontSize="9" textAnchor="middle">Pa</text>
             <text x="20" y="-14" fill="#334155" fontSize="11" fontWeight="600" textAnchor="middle">管道压力传感器</text>
           </g>
 

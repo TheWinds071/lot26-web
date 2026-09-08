@@ -32,7 +32,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const [tempTarget, setTempTarget] = useState<number>(55);
   const [tempMax, setTempMax] = useState<number>(75);
   const [tempDiffMax, setTempDiffMax] = useState<number>(15);
-  const [pressMax, setPressMax] = useState<number>(0.80);
+  const [pressMax, setPressMax] = useState<number>(800000);
   const [flowMin, setFlowMin] = useState<number>(0.05);
   const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
 
@@ -42,7 +42,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       setTempTarget(thresholds.temp_target);
       setTempMax(thresholds.temp_max);
       setTempDiffMax(thresholds.temp_diff_max ?? 15);
-      setPressMax(thresholds.pressure_max);
+      setPressMax(thresholds.pressure_max < 10 ? thresholds.pressure_max * 1_000_000 : thresholds.pressure_max);
       setFlowMin(thresholds.flow_rate_min > 1.0 ? 0.05 : thresholds.flow_rate_min);
     }
   }, [thresholds]);
@@ -54,7 +54,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       temp_target: Number(tempTarget),
       temp_max: Number(tempMax),
       temp_diff_max: Number(tempDiffMax),
-      pressure_min: 0.10,
+      pressure_min: 10000.0,
       pressure_max: Number(pressMax),
       flow_rate_min: Number(flowMin),
       flow_rate_target: Number(flowMin) <= 1.0 ? 0.30 : 25.0,
@@ -357,13 +357,13 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               <div className="flex rounded-lg shadow-xs">
                 <input
                   type="number"
-                  step="0.05"
+                  step="1000"
                   value={pressMax}
                   onChange={(e) => setPressMax(Number(e.target.value))}
                   className="w-full bg-white rounded-l-lg border border-gray-300 px-3 py-1.5 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 font-mono"
                 />
                 <span className="bg-slate-50 border border-l-0 border-gray-300 px-3 py-1.5 text-gray-500 text-xs font-medium rounded-r-lg flex items-center">
-                  MPa
+                  Pa
                 </span>
               </div>
               <span className="text-[11px] text-gray-500">管道压力超标时停泵保护管路</span>

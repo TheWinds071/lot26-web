@@ -52,13 +52,14 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
     t2StatusClass = "bg-rose-50 text-rose-700 border-rose-200";
   }
 
-  // Pressure Status
+  // Pressure Status (Pa)
+  const effPressMax = pressMax < 10 ? pressMax * 1_000_000 : pressMax;
   let pressStatusText = "压力平稳";
   let pressStatusClass = "bg-emerald-50 text-emerald-700 border-emerald-200";
-  if (press >= pressMax) {
+  if (press >= effPressMax) {
     pressStatusText = "超压危险";
     pressStatusClass = "bg-rose-50 text-rose-700 border-rose-200";
-  } else if (press < 0.1) {
+  } else if (press < effPressMax * 0.08) {
     pressStatusText = "低压/待机";
     pressStatusClass = "bg-amber-50 text-amber-700 border-amber-200";
   }
@@ -82,7 +83,7 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
 
   const t1Percentage = Math.min(100, Math.max(0, (t1 / 100) * 100));
   const t2Percentage = Math.min(100, Math.max(0, (t2 / 100) * 100));
-  const pressPercentage = Math.min(100, Math.max(0, (press / 1.0) * 100));
+  const pressPercentage = Math.min(100, Math.max(0, (press / effPressMax) * 100));
   // 自适应流量进度条：微流量按 0.40 L/min 满量程，常规流量按 40.0 L/min
   const maxDisplayFlow = flow <= 1.0 ? 0.4 : 40.0;
   const flowPercentage = Math.min(100, Math.max(0, (flow / maxDisplayFlow) * 100));
@@ -173,9 +174,9 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
           <span className="text-xs font-medium text-gray-500 block">单管路压力 (Pipe Pressure)</span>
           <div className="flex items-baseline gap-1.5 mt-1 mb-3">
             <span className="text-3xl font-bold tracking-tight text-gray-900 font-mono">
-              {press.toFixed(2)}
+              {press >= 10 ? Math.round(press).toLocaleString() : press.toFixed(1)}
             </span>
-            <span className="text-sm font-medium text-gray-500">MPa</span>
+            <span className="text-sm font-medium text-gray-500">Pa</span>
           </div>
         </div>
 
@@ -183,14 +184,14 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
           <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden mb-2">
             <div
               className={`h-full rounded-full transition-all duration-200 ${
-                press >= pressMax ? 'bg-rose-600' : 'bg-blue-600'
+                press >= effPressMax ? 'bg-rose-600' : 'bg-blue-600'
               }`}
               style={{ width: `${pressPercentage}%` }}
             ></div>
           </div>
           <div className="flex justify-between text-xs text-gray-500 font-normal">
-            <span>上限: {pressMax.toFixed(2)} MPa</span>
-            <span>约 {(press * 10).toFixed(1)} bar</span>
+            <span>上限: {effPressMax >= 1000 ? `${(effPressMax / 1000).toFixed(1)} kPa` : `${effPressMax} Pa`}</span>
+            <span>约 {(press / 1000).toFixed(2)} kPa</span>
           </div>
         </div>
       </div>

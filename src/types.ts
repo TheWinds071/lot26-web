@@ -3,7 +3,7 @@ export interface TelemetryData {
   temp_tank1: number;
   temp_tank2: number;
   temperature: number;
-  pressure: number;
+  pressure: number; // 单管路水流压力 (Pa)
   flow_rate: number;
   water_level_tank1?: number;
   water_level_tank2?: number;

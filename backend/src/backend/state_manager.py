@@ -170,12 +170,17 @@ class StateManager:
                 action_taken = True
             return action_taken
 
-        # 1. Single Pipe Pressure Safety Check
-        if telemetry.pressure >= self.thresholds.pressure_max:
+        # 1. Single Pipe Pressure Safety Check (Pa)
+        effective_pressure_max = (
+            self.thresholds.pressure_max * 1_000_000.0
+            if self.thresholds.pressure_max < 10.0
+            else self.thresholds.pressure_max
+        )
+        if telemetry.pressure >= effective_pressure_max:
             self.add_alarm(
                 level="CRITICAL",
                 type="OVERPRESSURE",
-                message=f"单管道压力超限: {telemetry.pressure:.2f} MPa (上限 {self.thresholds.pressure_max:.2f} MPa)",
+                message=f"单管道压力超限: {telemetry.pressure:.0f} Pa (上限 {effective_pressure_max:.0f} Pa)",
                 value=telemetry.pressure,
             )
             # Pressure safety action: stop pump & heater immediately
@@ -265,7 +270,8 @@ class StateManager:
                     logger.info(f"[Auto Control] Target Temp Reached (Avg={avg_temp:.1f}°C >= {self.thresholds.temp_target}°C) -> Stopped Heater")
 
             # Maintain inter-tank fluid flow if pump stopped
-            if not self.device_state.pump_active and telemetry.pressure < self.thresholds.pressure_max:
+            effective_pressure_max = self.thresholds.pressure_max * 1_000_000.0 if self.thresholds.pressure_max < 10.0 else self.thresholds.pressure_max
+            if not self.device_state.pump_active and telemetry.pressure < effective_pressure_max:
                 self.device_state.pump_active = True
                 self.device_state.last_updated = datetime.now()
                 action_taken = True

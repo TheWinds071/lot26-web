@@ -354,7 +354,7 @@ export const PlaybackController: React.FC<PlaybackControllerProps> = ({
               水槽2: {currentRecord.temp_tank2?.toFixed(1)}°C
             </span>
             <span className="px-2 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-800">
-              压力: {currentRecord.pressure?.toFixed(2)} MPa
+              压力: {currentRecord.pressure !== undefined ? (currentRecord.pressure >= 10 ? Math.round(currentRecord.pressure).toLocaleString() : currentRecord.pressure.toFixed(1)) : 0} Pa
             </span>
             <span className="px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800">
               流量: {currentRecord.flow_rate?.toFixed(2)} L/min

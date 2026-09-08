@@ -137,7 +137,7 @@ class TCPServer:
                                 f"[TCP Server] Telemetry from {client_address}: "
                                 f"Tank1={telemetry.temp_tank1:.1f}°C, "
                                 f"Tank2={telemetry.temp_tank2:.1f}°C, "
-                                f"Press={telemetry.pressure:.2f}MPa, "
+                                f"Press={telemetry.pressure:.0f}Pa, "
                                 f"Flow={telemetry.flow_rate:.2f}L/min"
                             )
                             # Process through auto-control engine & store state

@@ -15,7 +15,7 @@ def main():
             "device_id": "DUAL_TANK_TEST_01",
             "temp_tank1": 46.5,
             "temp_tank2": 42.0,
-            "pressure": 0.35,
+            "pressure": 35000.0,
             "flow_rate": 18.5,
             "water_level_tank1": 80.0,
             "water_level_tank2": 65.0,

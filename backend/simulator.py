@@ -28,7 +28,7 @@ class SinglePipeDualTankSimulator:
         self.water_level_tank2 = 65.0  # Tank 2 level (%)
 
         self.ambient_temp = 22.0  # Ambient room temp (°C)
-        self.pressure = 0.04      # Single pipe pressure (MPa, idle)
+        self.pressure = 4000.0    # Single pipe pressure (Pa, idle)
         self.flow_rate = 0.0      # Pipe flow rate (L/min, idle)
 
         # Actuator states (updated via TCP server downlink ACKs)
@@ -49,14 +49,14 @@ class SinglePipeDualTankSimulator:
         # 1. Pump, Pressure & Flow Dynamics in Single Pipe
         if self.emergency_stop or not self.pump_active:
             target_flow = 0.0
-            target_pressure = 0.04
+            target_pressure = 4000.0  # Pa
         else:
             speed_ratio = self.pump_speed / 100.0
             target_flow = speed_ratio * self.max_flow
-            target_pressure = 0.12 + speed_ratio * 0.46
+            target_pressure = 12000.0 + speed_ratio * 46000.0  # Pa (12 ~ 58 kPa)
 
         if self.inject_overpressure:
-            target_pressure = 0.95  # Exceeds max 0.8 MPa
+            target_pressure = 950000.0  # Pa (950 kPa, Exceeds max 800 kPa)
         if self.inject_dry_run:
             target_flow = 0.01 if self.max_flow <= 1.0 else 1.2
 
@@ -65,7 +65,7 @@ class SinglePipeDualTankSimulator:
         self.flow_rate += (target_flow - self.flow_rate) * 0.4 + noise_flow
         self.flow_rate = max(0.0, self.flow_rate)
 
-        self.pressure += (target_pressure - self.pressure) * 0.4 + random.uniform(-0.01, 0.01)
+        self.pressure += (target_pressure - self.pressure) * 0.4 + random.uniform(-15.0, 15.0)
         self.pressure = max(0.0, self.pressure)
 
         # 2. Single-Pipe Bidirectional Thermodynamic & Liquid Transfer Dynamics
@@ -134,7 +134,7 @@ class SinglePipeDualTankSimulator:
                     print(
                         f"📤 Telemetry Sent -> Tank1: {payload['temp_tank1']:4.1f}°C | "
                         f"Tank2: {payload['temp_tank2']:4.1f}°C | "
-                        f"Press: {payload['pressure']:4.2f}MPa | "
+                        f"Press: {payload['pressure']:6.0f}Pa | "
                         f"Flow: {payload['flow_rate']:5.2f}L/min | "
                         f"Pump: [{'ON' if self.pump_active else 'OFF'} {dir_label} ({self.pump_speed}%), "
                         f"Heater: {'ON' if self.heater_active else 'OFF'} ({self.heater_power}%)]"

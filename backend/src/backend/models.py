@@ -9,7 +9,7 @@ class TelemetryData(BaseModel):
     temp_tank1: float = Field(..., description="Tank 1 Water Temperature in Celsius (°C)")
     temp_tank2: float = Field(..., description="Tank 2 Water Temperature in Celsius (°C)")
     temperature: Optional[float] = Field(default=None, description="Average/Primary water temperature (°C)")
-    pressure: float = Field(..., description="Single Pipe Pressure in MPa")
+    pressure: float = Field(..., description="Single Pipe Pressure in Pa")
     flow_rate: float = Field(..., description="Single Pipe Flow Rate in L/min")
     water_level_tank1: Optional[float] = Field(default=75.0, description="Tank 1 Water Level (%)")
     water_level_tank2: Optional[float] = Field(default=65.0, description="Tank 2 Water Level (%)")
@@ -43,9 +43,9 @@ class ThresholdConfig(BaseModel):
     temp_max: float = Field(default=75.0, description="Maximum water temperature threshold to turn off heater/alarm (°C)")
     temp_diff_max: float = Field(default=15.0, description="Maximum temperature differential between Tank 1 & Tank 2 (°C)")
 
-    # Pressure rules (MPa)
-    pressure_min: float = Field(default=0.10, description="Minimum pipe pressure threshold (MPa)")
-    pressure_max: float = Field(default=0.80, description="Maximum pipe pressure safe threshold (MPa)")
+    # Pressure rules (Pa)
+    pressure_min: float = Field(default=10000.0, description="Minimum pipe pressure threshold (Pa)")
+    pressure_max: float = Field(default=800000.0, description="Maximum pipe pressure safe threshold (Pa)")
 
     # Flow rate rules (L/min) - Default adapted to micro-flow (0 ~ 0.4 L/min)
     flow_rate_min: float = Field(default=0.05, description="Minimum flow rate threshold to prevent dry-run (L/min)")

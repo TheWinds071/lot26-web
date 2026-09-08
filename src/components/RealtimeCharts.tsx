@@ -335,7 +335,7 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
         </div>
         <div className="flex items-baseline gap-1">
           <span className="text-base font-bold font-mono text-gray-900 transition-colors">
-            {displayVal.toFixed(dataKey === 'pressure' || dataKey === 'flow_rate' ? 2 : 1)}
+            {displayVal.toFixed(dataKey === 'pressure' ? (actualMax >= 10 ? 0 : 2) : (dataKey === 'flow_rate' ? 2 : 1))}
           </span>
           <span className="text-xs text-gray-500 font-normal">{unit}</span>
         </div>
@@ -396,7 +396,7 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
                 fontSize="10"
                 textAnchor="end"
               >
-                {val.toFixed(dataKey === 'pressure' ? 1 : (dataKey === 'flow_rate' && actualMax <= 1.0 ? 2 : 0))}
+                {val.toFixed(dataKey === 'pressure' ? (actualMax >= 10 ? 0 : 1) : (dataKey === 'flow_rate' && actualMax <= 1.0 ? 2 : 0))}
               </text>
             </g>
           );
@@ -569,7 +569,7 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
                 fontWeight="bold"
                 fontFamily="ui-monospace, Consolas, monospace"
               >
-                {hoveredVal.toFixed(dataKey === 'pressure' || dataKey === 'flow_rate' ? 2 : 1)} {unit}
+                {hoveredVal.toFixed(dataKey === 'pressure' ? (actualMax >= 10 ? 0 : 2) : (dataKey === 'flow_rate' ? 2 : 1))} {unit}
               </text>
             </g>
           </g>
@@ -1623,12 +1623,12 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
               <div className="flex items-center justify-between text-[11px] text-sky-800 font-medium mb-1">
                 <span>管道压力</span>
                 <span className="font-mono font-semibold">
-                  均 {stats.pressure.avg.toFixed(2)} MPa
+                  均 {stats.pressure.avg >= 10 ? Math.round(stats.pressure.avg).toLocaleString() : stats.pressure.avg.toFixed(2)} Pa
                 </span>
               </div>
               <div className="text-[10px] text-slate-500 font-mono flex justify-between">
-                <span>低: {stats.pressure.min.toFixed(2)}</span>
-                <span>高: {stats.pressure.max.toFixed(2)}</span>
+                <span>低: {stats.pressure.min >= 10 ? Math.round(stats.pressure.min).toLocaleString() : stats.pressure.min.toFixed(2)}</span>
+                <span>高: {stats.pressure.max >= 10 ? Math.round(stats.pressure.max).toLocaleString() : stats.pressure.max.toFixed(2)}</span>
               </div>
             </div>
 
@@ -1742,28 +1742,32 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
             />
           )}
 
-          {(activeTab === 'all' || activeTab === 'pressure') && (
-            <SingleChartItem
-              dataKey="pressure"
-              color="#0284c7"
-              unit="MPa"
-              title="管道压力趋势 (MPa)"
-              minVal={0.0}
-              maxVal={0.8}
-              dataPoints={dataPoints}
-              width={width}
-              height={height}
-              padding={padding}
-              playbackIndex={playbackIndex}
-              timelineIndex={viewMode === 'history' ? timelineIndex : undefined}
-              onSeek={handleSeek}
-              visibleStart={visibleStart}
-              visibleEnd={visibleEnd}
-              onPan={handlePan}
-              onWheelZoom={handleWheelZoom}
-              onResetZoom={handleResetZoom}
-            />
-          )}
+          {(activeTab === 'all' || activeTab === 'pressure') && (() => {
+            const maxPressInData = dataPoints.length > 0 ? Math.max(...dataPoints.map((d) => d.pressure ?? 0), 0) : 0;
+            const dynamicPressMaxVal = maxPressInData > 10 ? Math.ceil(maxPressInData * 1.25) : 800000;
+            return (
+              <SingleChartItem
+                dataKey="pressure"
+                color="#0284c7"
+                unit="Pa"
+                title="管道压力趋势 (Pa)"
+                minVal={0.0}
+                maxVal={dynamicPressMaxVal}
+                dataPoints={dataPoints}
+                width={width}
+                height={height}
+                padding={padding}
+                playbackIndex={playbackIndex}
+                timelineIndex={viewMode === 'history' ? timelineIndex : undefined}
+                onSeek={handleSeek}
+                visibleStart={visibleStart}
+                visibleEnd={visibleEnd}
+                onPan={handlePan}
+                onWheelZoom={handleWheelZoom}
+                onResetZoom={handleResetZoom}
+              />
+            );
+          })()}
 
           {(activeTab === 'all' || activeTab === 'flow') && (() => {
             const maxFlowInData = dataPoints.length > 0 ? Math.max(...dataPoints.map((d) => d.flow_rate ?? 0), 0) : 0;

@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { ArrowLeftRight, Check, Flame, Power, RotateCw, Save, Settings, Sliders, ToggleLeft, ToggleRight } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ArrowLeftRight, Check, Flame, Power, RotateCcw, RotateCw, Save, Settings, Sliders, ToggleLeft, ToggleRight } from 'lucide-react';
 import type { DeviceState, ThresholdConfig } from '../types';
 
 interface ControlPanelProps {
@@ -35,17 +35,33 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const [pressMax, setPressMax] = useState<number>(800000);
   const [flowMin, setFlowMin] = useState<number>(0.05);
   const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
+  const [isDirty, setIsDirty] = useState<boolean>(false);
+  const isInitializedRef = useRef<boolean>(false);
 
+  // Sync external thresholds only when initial loading or user has no uncommitted edits
   useEffect(() => {
+    if (thresholds && (!isInitializedRef.current || !isDirty)) {
+      setTempMin(thresholds.temp_min);
+      setTempTarget(thresholds.temp_target);
+      setTempMax(thresholds.temp_max);
+      setTempDiffMax(thresholds.temp_diff_max ?? 15);
+      setPressMax(thresholds.pressure_max < 10 ? thresholds.pressure_max * 1_000_000 : thresholds.pressure_max);
+      setFlowMin(thresholds.flow_rate_min);
+      isInitializedRef.current = true;
+    }
+  }, [thresholds, isDirty]);
+
+  const handleResetThresholds = () => {
     if (thresholds) {
       setTempMin(thresholds.temp_min);
       setTempTarget(thresholds.temp_target);
       setTempMax(thresholds.temp_max);
       setTempDiffMax(thresholds.temp_diff_max ?? 15);
       setPressMax(thresholds.pressure_max < 10 ? thresholds.pressure_max * 1_000_000 : thresholds.pressure_max);
-      setFlowMin(thresholds.flow_rate_min > 1.0 ? 0.05 : thresholds.flow_rate_min);
+      setFlowMin(thresholds.flow_rate_min);
     }
-  }, [thresholds]);
+    setIsDirty(false);
+  };
 
   const handleSaveThresholds = (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,8 +75,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       flow_rate_min: Number(flowMin),
       flow_rate_target: Number(flowMin) <= 1.0 ? 0.30 : 25.0,
     });
+    setIsDirty(false);
     setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 2000);
+    setTimeout(() => setSavedSuccess(false), 2500);
   };
 
   return (
@@ -260,11 +277,18 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             </div>
           </div>
 
-          {savedSuccess && (
-            <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 animate-fadeIn">
-              <Check className="w-3.5 h-3.5" /> 已生效
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {isDirty && (
+              <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200">
+                未保存修改
+              </span>
+            )}
+            {savedSuccess && (
+              <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 animate-fadeIn">
+                <Check className="w-3.5 h-3.5" /> 已保存并生效
+              </span>
+            )}
+          </div>
         </div>
 
         <form onSubmit={handleSaveThresholds} className="space-y-4">
@@ -279,7 +303,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   type="number"
                   step="0.5"
                   value={tempMin}
-                  onChange={(e) => setTempMin(Number(e.target.value))}
+                  onChange={(e) => {
+                    setTempMin(Number(e.target.value));
+                    setIsDirty(true);
+                  }}
                   className="w-full bg-white rounded-l-lg border border-gray-300 px-3 py-1.5 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 font-mono"
                 />
                 <span className="bg-slate-50 border border-l-0 border-gray-300 px-3 py-1.5 text-gray-500 text-xs font-medium rounded-r-lg flex items-center">
@@ -299,7 +326,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   type="number"
                   step="0.5"
                   value={tempTarget}
-                  onChange={(e) => setTempTarget(Number(e.target.value))}
+                  onChange={(e) => {
+                    setTempTarget(Number(e.target.value));
+                    setIsDirty(true);
+                  }}
                   className="w-full bg-white rounded-l-lg border border-gray-300 px-3 py-1.5 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 font-mono"
                 />
                 <span className="bg-slate-50 border border-l-0 border-gray-300 px-3 py-1.5 text-gray-500 text-xs font-medium rounded-r-lg flex items-center">
@@ -319,7 +349,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   type="number"
                   step="0.5"
                   value={tempMax}
-                  onChange={(e) => setTempMax(Number(e.target.value))}
+                  onChange={(e) => {
+                    setTempMax(Number(e.target.value));
+                    setIsDirty(true);
+                  }}
                   className="w-full bg-white rounded-l-lg border border-gray-300 px-3 py-1.5 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 font-mono"
                 />
                 <span className="bg-slate-50 border border-l-0 border-gray-300 px-3 py-1.5 text-gray-500 text-xs font-medium rounded-r-lg flex items-center">
@@ -339,7 +372,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   type="number"
                   step="0.5"
                   value={tempDiffMax}
-                  onChange={(e) => setTempDiffMax(Number(e.target.value))}
+                  onChange={(e) => {
+                    setTempDiffMax(Number(e.target.value));
+                    setIsDirty(true);
+                  }}
                   className="w-full bg-white rounded-l-lg border border-gray-300 px-3 py-1.5 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 font-mono"
                 />
                 <span className="bg-slate-50 border border-l-0 border-gray-300 px-3 py-1.5 text-gray-500 text-xs font-medium rounded-r-lg flex items-center">
@@ -359,7 +395,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   type="number"
                   step="1000"
                   value={pressMax}
-                  onChange={(e) => setPressMax(Number(e.target.value))}
+                  onChange={(e) => {
+                    setPressMax(Number(e.target.value));
+                    setIsDirty(true);
+                  }}
                   className="w-full bg-white rounded-l-lg border border-gray-300 px-3 py-1.5 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 font-mono"
                 />
                 <span className="bg-slate-50 border border-l-0 border-gray-300 px-3 py-1.5 text-gray-500 text-xs font-medium rounded-r-lg flex items-center">
@@ -379,7 +418,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   type="number"
                   step="0.01"
                   value={flowMin}
-                  onChange={(e) => setFlowMin(Number(e.target.value))}
+                  onChange={(e) => {
+                    setFlowMin(Number(e.target.value));
+                    setIsDirty(true);
+                  }}
                   className="w-full bg-white rounded-l-lg border border-gray-300 px-3 py-1.5 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 font-mono"
                 />
                 <span className="bg-slate-50 border border-l-0 border-gray-300 px-3 py-1.5 text-gray-500 text-xs font-medium rounded-r-lg flex items-center">
@@ -390,7 +432,17 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             </div>
           </div>
 
-          <div className="flex justify-end pt-2">
+          <div className="flex justify-end items-center gap-2.5 pt-2">
+            {isDirty && (
+              <button
+                type="button"
+                onClick={handleResetThresholds}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 font-medium text-xs transition-all duration-200 cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-gray-500" />
+                <span>撤销修改</span>
+              </button>
+            )}
             <button
               type="submit"
               className="inline-flex items-center gap-2 px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs shadow-sm hover:shadow-md active:scale-[0.98] transition-all duration-200 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-pointer"

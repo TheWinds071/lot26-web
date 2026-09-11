@@ -5,6 +5,7 @@ import {
   Database,
   Download,
   RefreshCw,
+  Trash2,
   TrendingUp,
 } from 'lucide-react';
 import type { TelemetryData } from '../types';
@@ -15,6 +16,7 @@ interface RealtimeChartsProps {
   playbackIndex?: number;
   onSeek?: (index: number) => void;
   onHistoricalFrameSelect?: (record: TelemetryData | null) => void;
+  onClearHistory?: () => void;
 }
 
 const formatTime = (ts?: string, index?: number): string => {
@@ -1152,11 +1154,13 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
   playbackIndex,
   onSeek,
   onHistoricalFrameSelect,
+  onClearHistory,
 }) => {
   const [activeTab, setActiveTab] = useState<'all' | 't1' | 't2' | 'pressure' | 'flow'>('all');
   const [viewMode, setViewMode] = useState<'live' | 'history'>('live');
   const [historicalData, setHistoricalData] = useState<TelemetryData[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(false);
+  const [isClearingHistory, setIsClearingHistory] = useState<boolean>(false);
   const [timelineIndex, setTimelineIndex] = useState<number>(0);
   const [showCustomFilter, setShowCustomFilter] = useState<boolean>(false);
   const [customStart, setCustomStart] = useState<string>('');
@@ -1194,6 +1198,33 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
       console.error('Failed to query historical data from SQLite:', e);
     } finally {
       setIsLoadingHistory(false);
+    }
+  };
+
+  const handleClearDatabaseHistory = async () => {
+    const confirmed = window.confirm(
+      '⚠️ 确定要清空数据库中的所有历史遥测数据吗？\n\n此操作将永久删除 SQLite 数据库中记录的所有传感器历史数据，清空后无法恢复。'
+    );
+    if (!confirmed) return;
+
+    setIsClearingHistory(true);
+    try {
+      const res = await fetch('/api/history', { method: 'DELETE' });
+      if (res.ok) {
+        setHistoricalData([]);
+        setViewRange(null);
+        setTimelineIndex(0);
+        onHistoricalFrameSelect?.(null);
+        onClearHistory?.();
+        await fetchHistoricalRecords();
+      } else {
+        alert('清空历史数据失败，请检查后端服务状态。');
+      }
+    } catch (err) {
+      console.error('Failed to clear database history:', err);
+      alert('清空历史数据请求失败。');
+    } finally {
+      setIsClearingHistory(false);
     }
   };
 
@@ -1493,6 +1524,19 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
                   }`}
                 />
                 刷新数据
+              </button>
+              <button
+                onClick={handleClearDatabaseHistory}
+                disabled={isClearingHistory || isLoadingHistory}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 hover:border-rose-300 transition-colors shadow-2xs disabled:opacity-50 cursor-pointer"
+                title="清空 SQLite 数据库中的所有历史遥测记录"
+              >
+                <Trash2
+                  className={`w-3.5 h-3.5 ${
+                    isClearingHistory ? 'animate-spin text-rose-600' : ''
+                  }`}
+                />
+                {isClearingHistory ? '清除中...' : '清除历史数据'}
               </button>
               <button
                 onClick={() => {

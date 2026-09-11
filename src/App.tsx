@@ -43,8 +43,32 @@ export const App: React.FC = () => {
             }
           } else if (payload.type === 'telemetry') {
             const telemetry: TelemetryData = payload.data.telemetry;
-            setStatus(payload.data.status);
+            const newStatus: SystemStatus = payload.data.status;
+            setStatus((prev) => {
+              if (!prev) return newStatus;
+              const prevTh = prev.thresholds;
+              const nextTh = newStatus.thresholds;
+              const isSameTh =
+                prevTh &&
+                nextTh &&
+                prevTh.temp_min === nextTh.temp_min &&
+                prevTh.temp_target === nextTh.temp_target &&
+                prevTh.temp_max === nextTh.temp_max &&
+                prevTh.temp_diff_max === nextTh.temp_diff_max &&
+                prevTh.pressure_min === nextTh.pressure_min &&
+                prevTh.pressure_max === nextTh.pressure_max &&
+                prevTh.flow_rate_min === nextTh.flow_rate_min &&
+                prevTh.flow_rate_target === nextTh.flow_rate_target;
+
+              return {
+                ...newStatus,
+                thresholds: isSameTh ? prevTh : nextTh,
+              };
+            });
             setHistory((prev) => [...prev.slice(-120), telemetry]);
+          } else if (payload.type === 'history_cleared') {
+            setHistory([]);
+            setHistoricalFrame(null);
           } else if (payload.type === 'device_state_updated') {
             setStatus((prev) =>
               prev ? { ...prev, device_state: payload.data } : null
@@ -250,6 +274,10 @@ export const App: React.FC = () => {
         <RealtimeCharts
           history={history}
           onHistoricalFrameSelect={(record) => setHistoricalFrame(record)}
+          onClearHistory={() => {
+            setHistory([]);
+            setHistoricalFrame(null);
+          }}
         />
 
         {/* 5. Actuator Overrides & Closed-Loop Threshold Configuration */}

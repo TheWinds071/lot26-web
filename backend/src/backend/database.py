@@ -93,6 +93,16 @@ class DatabaseManager:
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_alarm_type ON alarm_history(type);")
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_alarm_level ON alarm_history(level);")
 
+                # System configuration table for persistent thresholds & settings
+                cursor.execute("""
+                CREATE TABLE IF NOT EXISTS system_config (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                """)
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_system_config_key ON system_config(key);")
+
                 conn.commit()
 
     @staticmethod
@@ -465,6 +475,46 @@ class DatabaseManager:
                 deleted = cursor.rowcount
                 conn.commit()
                 logger.info(f"Cleaned {deleted} telemetry records older than {days} days.")
+                return deleted
+
+    def get_config(self, key: str) -> Optional[str]:
+        """Retrieves a configuration value (e.g. JSON string) by key from SQLite."""
+        with self._lock:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT value FROM system_config WHERE key = ?;", (key,))
+                row = cursor.fetchone()
+                if row:
+                    return str(row["value"])
+                return None
+
+    def set_config(self, key: str, value: str) -> None:
+        """Inserts or updates a configuration value in SQLite."""
+        now_str = self._format_datetime(datetime.now())
+        with self._lock:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    INSERT INTO system_config (key, value, updated_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(key) DO UPDATE SET
+                        value = excluded.value,
+                        updated_at = excluded.updated_at;
+                    """,
+                    (key, value, now_str),
+                )
+                conn.commit()
+
+    def clear_telemetry_history(self) -> int:
+        """Clears all historical telemetry records from SQLite."""
+        with self._lock:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM telemetry_history;")
+                deleted = cursor.rowcount
+                conn.commit()
+                logger.info(f"Cleared {deleted} telemetry records from SQLite.")
                 return deleted
 
 

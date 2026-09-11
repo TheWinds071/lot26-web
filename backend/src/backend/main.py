@@ -175,6 +175,13 @@ async def export_history_csv(
     )
 
 
+@app.delete("/api/history")
+async def clear_history():
+    """Clears all historical telemetry records from SQLite database and memory buffer."""
+    count = state_manager.clear_history()
+    return {"status": "success", "message": f"Cleared {count} historical records", "deleted_count": count}
+
+
 @app.get("/api/alarms", response_model=List[AlarmEvent])
 async def get_alarms(limit: int = 50):
     """Returns recent active/unresolved and recent alarm event logs."""

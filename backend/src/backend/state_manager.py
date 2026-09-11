@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import uuid
 from collections import deque
@@ -53,7 +54,7 @@ class StateManager:
             emergency_stop=False,
         )
 
-        self.thresholds = ThresholdConfig()
+        self.thresholds = self._load_thresholds()
         self.tcp_client_connected = False
         self.last_packet_time: Optional[datetime] = None
 
@@ -278,8 +279,26 @@ class StateManager:
 
         return action_taken
 
+    def _load_thresholds(self) -> ThresholdConfig:
+        """Loads persisted thresholds from SQLite database if available, else uses defaults."""
+        try:
+            val = self.db.get_config("thresholds")
+            if val:
+                data = json.loads(val)
+                loaded = ThresholdConfig(**data)
+                logger.info(f"[StateManager] Loaded persistent thresholds from SQLite: {loaded.model_dump()}")
+                return loaded
+        except Exception as e:
+            logger.error(f"[StateManager] Failed to load persistent thresholds: {e}")
+        return ThresholdConfig()
+
     def update_thresholds(self, config: ThresholdConfig) -> ThresholdConfig:
         self.thresholds = config
+        try:
+            self.db.set_config("thresholds", self.thresholds.model_dump_json())
+            logger.info("[StateManager] Persisted updated thresholds to SQLite.")
+        except Exception as e:
+            logger.error(f"[StateManager] Failed to persist thresholds to SQLite: {e}")
         self._notify("thresholds_updated", self.thresholds.model_dump(mode="json"))
         return self.thresholds
 
@@ -404,6 +423,15 @@ class StateManager:
     def clear_alarms(self) -> None:
         self.alarms.clear()
         self._notify("alarms_cleared", {})
+
+    def clear_history(self) -> int:
+        """Clears all historical telemetry records from SQLite and in-memory ring buffer."""
+        deleted = self.db.clear_telemetry_history()
+        self.telemetry_history.clear()
+        self.latest_telemetry = None
+        self._notify("history_cleared", {"deleted": deleted})
+        logger.info(f"[StateManager] Cleared historical telemetry ({deleted} records from SQLite).")
+        return deleted
 
 
 # Global singleton instance

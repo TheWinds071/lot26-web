@@ -5,10 +5,11 @@ import { PipelineTopology } from './components/PipelineTopology';
 import { RealtimeCharts } from './components/RealtimeCharts';
 import { ControlPanel } from './components/ControlPanel';
 import { AlarmLogs } from './components/AlarmLogs';
-import type { DeviceState, SystemStatus, TelemetryData, ThresholdConfig } from './types';
+import type { AlarmRule, DeviceState, SystemStatus, TelemetryData, ThresholdConfig } from './types';
 
 export const App: React.FC = () => {
   const [status, setStatus] = useState<SystemStatus | null>(null);
+  const [alarmRules, setAlarmRules] = useState<AlarmRule[]>([]);
   const [history, setHistory] = useState<TelemetryData[]>([]);
   const [wsConnected, setWsConnected] = useState<boolean>(false);
   const [historicalFrame, setHistoricalFrame] = useState<TelemetryData | null>(null);
@@ -38,9 +39,14 @@ export const App: React.FC = () => {
           const payload = JSON.parse(event.data);
           if (payload.type === 'init') {
             setStatus(payload.status);
+            if (payload.status?.alarm_rules) {
+              setAlarmRules(payload.status.alarm_rules);
+            }
             if (payload.history) {
               setHistory(payload.history);
             }
+          } else if (payload.type === 'alarm_rules_updated') {
+            setAlarmRules(payload.data);
           } else if (payload.type === 'telemetry') {
             const telemetry: TelemetryData = payload.data.telemetry;
             const newStatus: SystemStatus = payload.data.status;
@@ -136,6 +142,11 @@ export const App: React.FC = () => {
         const histData: TelemetryData[] = await histRes.json();
         setHistory(histData);
       }
+      const rulesRes = await fetch('/api/alarm-rules');
+      if (rulesRes.ok) {
+        const rulesData: AlarmRule[] = await rulesRes.json();
+        setAlarmRules(rulesData);
+      }
     } catch {
       // Backend maybe starting up
     }
@@ -163,6 +174,60 @@ export const App: React.FC = () => {
   const sendWsMessage = (msg: object) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(msg));
+    }
+  };
+
+  const handleAddAlarmRule = async (rule: AlarmRule) => {
+    sendWsMessage({ action: 'add_alarm_rule', rule });
+    try {
+      const res = await fetch('/api/alarm-rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(rule),
+      });
+      if (res.ok) {
+        const created: AlarmRule = await res.json();
+        setAlarmRules((prev) => {
+          const exists = prev.some((r) => r.id === created.id);
+          return exists ? prev.map((r) => (r.id === created.id ? created : r)) : [...prev, created];
+        });
+      }
+      fetchStatus();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleUpdateAlarmRule = async (rule: AlarmRule) => {
+    sendWsMessage({ action: 'update_alarm_rule', rule_id: rule.id, rule });
+    try {
+      const res = await fetch(`/api/alarm-rules/${rule.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(rule),
+      });
+      if (res.ok) {
+        const updated: AlarmRule = await res.json();
+        setAlarmRules((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+      }
+      fetchStatus();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleDeleteAlarmRule = async (ruleId: string) => {
+    sendWsMessage({ action: 'delete_alarm_rule', rule_id: ruleId });
+    try {
+      const res = await fetch(`/api/alarm-rules/${ruleId}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setAlarmRules((prev) => prev.filter((r) => r.id !== ruleId));
+      }
+      fetchStatus();
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -298,11 +363,18 @@ export const App: React.FC = () => {
           onUpdateThresholds={handleUpdateThresholds}
         />
 
-        {/* 6. Active Alarms & Audit Log Table */}
-        <AlarmLogs
-          alarms={status?.active_alarms || []}
-          onClearAlarms={handleClearAlarms}
-        />
+        {/* 6. Active Alarms & Configurable Alarm Rules Management */}
+        <div id="alarm-logs-section">
+          <AlarmLogs
+            alarms={status?.active_alarms || []}
+            alarmRules={alarmRules}
+            currentTelemetry={currentTelemetry}
+            onClearAlarms={handleClearAlarms}
+            onAddRule={handleAddAlarmRule}
+            onUpdateRule={handleUpdateAlarmRule}
+            onDeleteRule={handleDeleteAlarmRule}
+          />
+        </div>
 
         {/* Footer */}
         <footer className="text-center py-4 text-xs text-gray-500 border-t border-gray-200">

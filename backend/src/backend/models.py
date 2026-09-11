@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel, Field
@@ -63,11 +64,42 @@ class AlarmEvent(BaseModel):
     resolved: bool = False
 
 
+class AlarmRule(BaseModel):
+    """Configurable Alarm Rule for SCADA telemetry monitoring"""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8], description="Unique Rule ID")
+    name: str = Field(..., description="Alarm rule name, e.g. 水槽1水温过高报警")
+    metric: str = Field(
+        ...,
+        description="Metric field name: temp_tank1, temp_tank2, temperature, temp_diff, pressure, flow_rate, water_level_tank1, water_level_tank2, water_level_diff",
+    )
+    operator: str = Field(
+        ...,
+        description="Comparison operator: '>', '>=', '<', '<=', '==', '!='",
+    )
+    threshold: float = Field(..., description="Numerical threshold value")
+    level: str = Field(
+        default="WARNING",
+        description="Severity level: INFO, WARNING, ERROR, CRITICAL",
+    )
+    message: Optional[str] = Field(
+        default=None,
+        description="Custom message template or description",
+    )
+    action: str = Field(
+        default="NONE",
+        description="Safety action: NONE, STOP_HEATER, STOP_PUMP, EMERGENCY_STOP",
+    )
+    enabled: bool = Field(default=True, description="Rule enable/disable switch")
+    is_system: bool = Field(default=False, description="Whether this is a built-in default rule")
+    created_at: datetime = Field(default_factory=datetime.now, description="Rule creation time")
+
+
 class SystemStatus(BaseModel):
     """Comprehensive System Status for Single-Pipe Dual-Tank SCADA Dashboard"""
     telemetry: Optional[TelemetryData] = None
     device_state: DeviceState
     thresholds: ThresholdConfig
     active_alarms: List[AlarmEvent] = []
+    alarm_rules: List[AlarmRule] = []
     tcp_client_connected: bool = False
     last_packet_time: Optional[datetime] = None

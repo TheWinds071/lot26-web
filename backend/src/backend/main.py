@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from backend.models import (
     AlarmEvent,
+    AlarmRule,
     DeviceState,
     SystemStatus,
     TelemetryData,
@@ -209,6 +210,33 @@ async def clear_alarms():
     return {"status": "success", "message": "Alarms cleared"}
 
 
+@app.get("/api/alarm-rules", response_model=List[AlarmRule])
+async def get_alarm_rules():
+    """Returns all configured alarm rules."""
+    return state_manager.get_alarm_rules()
+
+
+@app.post("/api/alarm-rules", response_model=AlarmRule)
+async def create_alarm_rule(rule: AlarmRule):
+    """Creates and persists a new configurable alarm rule."""
+    return state_manager.add_alarm_rule(rule)
+
+
+@app.put("/api/alarm-rules/{rule_id}", response_model=AlarmRule)
+async def update_alarm_rule(rule_id: str, rule: AlarmRule):
+    """Updates an existing alarm rule."""
+    return state_manager.update_alarm_rule(rule_id, rule)
+
+
+@app.delete("/api/alarm-rules/{rule_id}")
+async def delete_alarm_rule(rule_id: str):
+    """Deletes an alarm rule."""
+    deleted = state_manager.delete_alarm_rule(rule_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Alarm rule not found")
+    return {"status": "success", "message": f"Alarm rule {rule_id} deleted", "id": rule_id}
+
+
 @app.get("/api/config/thresholds", response_model=ThresholdConfig)
 async def get_thresholds():
     """Returns auto-control threshold rules."""
@@ -347,6 +375,18 @@ async def websocket_telemetry(websocket: WebSocket):
                             "heater_active": state_manager.device_state.heater_active,
                             "heater_power": state_manager.device_state.heater_power,
                         })
+                elif action == "add_alarm_rule":
+                    rule_data = msg.get("rule", {})
+                    state_manager.add_alarm_rule(AlarmRule(**rule_data))
+                elif action == "update_alarm_rule":
+                    rule_data = msg.get("rule", {})
+                    rule_id = msg.get("rule_id") or rule_data.get("id")
+                    if rule_id:
+                        state_manager.update_alarm_rule(rule_id, AlarmRule(**rule_data))
+                elif action == "delete_alarm_rule":
+                    rule_id = msg.get("rule_id")
+                    if rule_id:
+                        state_manager.delete_alarm_rule(rule_id)
             except Exception as e:
                 logger.error(f"[WebSocket] Command handling error: {e}")
 

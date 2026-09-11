@@ -9,6 +9,7 @@ from typing import Callable, Deque, List, Optional, Set
 from backend.database import DatabaseManager, db_manager
 from backend.models import (
     AlarmEvent,
+    AlarmRule,
     DeviceState,
     SystemStatus,
     TelemetryData,
@@ -43,6 +44,15 @@ class StateManager:
                 self.alarms.extend(persisted_alarms)
         except Exception as e:
             logger.warning(f"Failed to preload SQLite historical records: {e}")
+
+        # Configurable dynamic alarm rules
+        self.alarm_rules: dict[str, AlarmRule] = {}
+        try:
+            for r in self.db.get_alarm_rules():
+                self.alarm_rules[r.id] = r
+            logger.info(f"Loaded {len(self.alarm_rules)} configurable alarm rules from SQLite.")
+        except Exception as e:
+            logger.warning(f"Failed to preload alarm rules from SQLite: {e}")
 
         self.device_state = DeviceState(
             auto_mode=False,
@@ -161,6 +171,75 @@ class StateManager:
             "device_state": self.device_state.model_dump(mode="json"),
         }
 
+    def _get_metric_val(self, metric: str, telemetry: TelemetryData) -> Optional[float]:
+        if metric == "temp_tank1":
+            return telemetry.temp_tank1
+        elif metric == "temp_tank2":
+            return telemetry.temp_tank2
+        elif metric == "temperature":
+            return telemetry.temperature if telemetry.temperature is not None else round((telemetry.temp_tank1 + telemetry.temp_tank2) / 2.0, 2)
+        elif metric == "temp_diff":
+            return round(abs(telemetry.temp_tank1 - telemetry.temp_tank2), 2)
+        elif metric == "pressure":
+            return telemetry.pressure
+        elif metric == "flow_rate":
+            return telemetry.flow_rate
+        elif metric == "water_level_tank1":
+            return telemetry.water_level_tank1
+        elif metric == "water_level_tank2":
+            return telemetry.water_level_tank2
+        elif metric == "water_level_diff":
+            l1 = telemetry.water_level_tank1 if telemetry.water_level_tank1 is not None else 0.0
+            l2 = telemetry.water_level_tank2 if telemetry.water_level_tank2 is not None else 0.0
+            return round(abs(l1 - l2), 2)
+        return None
+
+    @staticmethod
+    def _get_metric_display_name(metric: str) -> str:
+        names = {
+            "temp_tank1": "水槽1水温",
+            "temp_tank2": "水槽2水温",
+            "temperature": "平均水温",
+            "temp_diff": "双槽温差",
+            "pressure": "单管水压",
+            "flow_rate": "单管流速",
+            "water_level_tank1": "水槽1水位",
+            "water_level_tank2": "水槽2水位",
+            "water_level_diff": "双槽水位差",
+        }
+        return names.get(metric, metric)
+
+    @staticmethod
+    def _get_metric_unit(metric: str) -> str:
+        units = {
+            "temp_tank1": "°C",
+            "temp_tank2": "°C",
+            "temperature": "°C",
+            "temp_diff": "°C",
+            "pressure": "Pa",
+            "flow_rate": "L/min",
+            "water_level_tank1": "%",
+            "water_level_tank2": "%",
+            "water_level_diff": "%",
+        }
+        return units.get(metric, "")
+
+    @staticmethod
+    def _check_condition(val: float, op: str, threshold: float) -> bool:
+        if op == ">":
+            return val > threshold
+        elif op == ">=":
+            return val >= threshold
+        elif op == "<":
+            return val < threshold
+        elif op == "<=":
+            return val <= threshold
+        elif op == "==":
+            return abs(val - threshold) < 1e-4
+        elif op == "!=":
+            return abs(val - threshold) >= 1e-4
+        return False
+
     def _evaluate_rules(self, telemetry: TelemetryData) -> bool:
         """Evaluates single-pipe bidirectional auto control rules and safety boundaries."""
         action_taken = False
@@ -248,6 +327,52 @@ class StateManager:
                 action_taken = True
         else:
             self.resolve_alarm("LOW_FLOW")
+
+        # 3.5 Configurable Dynamic Alarm Rules Evaluation
+        for rule in list(self.alarm_rules.values()):
+            alarm_type = f"RULE_{rule.id}"
+            if not rule.enabled:
+                self.resolve_alarm(alarm_type)
+                continue
+
+            val = self._get_metric_val(rule.metric, telemetry)
+            if val is None:
+                continue
+
+            triggered = self._check_condition(val, rule.operator, rule.threshold)
+
+            # Special case: for micro-flow dry-run checks, only alert when pump is actually active
+            if rule.metric == "flow_rate" and rule.operator in ("<", "<=") and not self.device_state.pump_active:
+                triggered = False
+
+            if triggered:
+                display_name = self._get_metric_display_name(rule.metric)
+                unit = self._get_metric_unit(rule.metric)
+                custom_msg = rule.message.strip() if rule.message else ""
+                msg = custom_msg or f"{rule.name}: {display_name} ({val:.2f} {unit}) {rule.operator} 设定阈值 ({rule.threshold:.2f} {unit})"
+                self.add_alarm(
+                    level=rule.level,
+                    type=alarm_type,
+                    message=msg,
+                    value=val,
+                )
+                if rule.action == "STOP_HEATER" and self.device_state.heater_active:
+                    self.device_state.heater_active = False
+                    self.device_state.heater_power = 0
+                    self.device_state.last_updated = datetime.now()
+                    action_taken = True
+                    logger.warning(f"[Rule Safety Interlock] Rule '{rule.name}' auto-stopped heater.")
+                elif rule.action == "STOP_PUMP" and self.device_state.pump_active:
+                    self.device_state.pump_active = False
+                    self.device_state.last_updated = datetime.now()
+                    action_taken = True
+                    logger.warning(f"[Rule Safety Interlock] Rule '{rule.name}' auto-stopped pump.")
+                elif rule.action == "EMERGENCY_STOP" and not self.device_state.emergency_stop:
+                    self.set_emergency_stop(True)
+                    action_taken = True
+                    logger.critical(f"[Rule Safety Interlock] Rule '{rule.name}' triggered EMERGENCY STOP.")
+            else:
+                self.resolve_alarm(alarm_type)
 
         # 4. Auto Control Logic (Temperature Only - Water pump is manually controlled)
         if self.device_state.auto_mode and not self.device_state.emergency_stop:
@@ -396,9 +521,42 @@ class StateManager:
             device_state=self.device_state,
             thresholds=self.thresholds,
             active_alarms=active_alarms,
+            alarm_rules=self.get_alarm_rules(),
             tcp_client_connected=self.tcp_client_connected,
             last_packet_time=self.last_packet_time,
         )
+
+    def get_alarm_rules(self) -> List[AlarmRule]:
+        return list(self.alarm_rules.values())
+
+    def add_alarm_rule(self, rule: AlarmRule) -> AlarmRule:
+        saved_rule = self.db.insert_alarm_rule(rule)
+        self.alarm_rules[saved_rule.id] = saved_rule
+        self._notify("alarm_rules_updated", [r.model_dump(mode="json") for r in self.alarm_rules.values()])
+        if self.latest_telemetry:
+            if self._evaluate_rules(self.latest_telemetry):
+                self._notify("device_state_updated", self.device_state.model_dump(mode="json"))
+        return saved_rule
+
+    def update_alarm_rule(self, rule_id: str, rule: AlarmRule) -> AlarmRule:
+        rule.id = rule_id
+        saved_rule = self.db.update_alarm_rule(rule)
+        self.alarm_rules[rule_id] = saved_rule
+        if not saved_rule.enabled:
+            self.resolve_alarm(f"RULE_{rule_id}")
+        self._notify("alarm_rules_updated", [r.model_dump(mode="json") for r in self.alarm_rules.values()])
+        if self.latest_telemetry:
+            if self._evaluate_rules(self.latest_telemetry):
+                self._notify("device_state_updated", self.device_state.model_dump(mode="json"))
+        return saved_rule
+
+    def delete_alarm_rule(self, rule_id: str) -> bool:
+        if rule_id in self.alarm_rules:
+            self.resolve_alarm(f"RULE_{rule_id}")
+            del self.alarm_rules[rule_id]
+        deleted = self.db.delete_alarm_rule(rule_id)
+        self._notify("alarm_rules_updated", [r.model_dump(mode="json") for r in self.alarm_rules.values()])
+        return deleted
 
     def get_history(self, limit: int = 100) -> List[TelemetryData]:
         items = list(self.telemetry_history)

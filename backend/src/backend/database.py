@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from backend.models import AlarmEvent, TelemetryData
+from backend.models import AlarmEvent, AlarmRule, TelemetryData
 
 logger = logging.getLogger("database")
 
@@ -102,6 +102,107 @@ class DatabaseManager:
                 );
                 """)
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_system_config_key ON system_config(key);")
+
+                # Alarm rules table for dynamic rule engine
+                cursor.execute("""
+                CREATE TABLE IF NOT EXISTS alarm_rules (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    metric TEXT NOT NULL,
+                    operator TEXT NOT NULL,
+                    threshold REAL NOT NULL,
+                    level TEXT NOT NULL,
+                    message TEXT,
+                    action TEXT DEFAULT 'NONE',
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    is_system INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL
+                );
+                """)
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_alarm_rules_metric ON alarm_rules(metric);")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_alarm_rules_enabled ON alarm_rules(enabled);")
+
+                # Seed initial default rules if alarm_rules table is empty
+                cursor.execute("SELECT COUNT(*) as cnt FROM alarm_rules;")
+                count_row = cursor.fetchone()
+                if count_row and count_row["cnt"] == 0:
+                    now_iso = datetime.now().isoformat()
+                    default_rules = [
+                        (
+                            "rule_temp_max",
+                            "水槽水温超高保护",
+                            "temp_tank2",
+                            ">=",
+                            75.0,
+                            "ERROR",
+                            "水槽2水温超高保护触发，系统已自动切断加热",
+                            "STOP_HEATER",
+                            1,
+                            1,
+                            now_iso,
+                        ),
+                        (
+                            "rule_temp_diff",
+                            "双水槽温差过大预警",
+                            "temp_diff",
+                            ">=",
+                            15.0,
+                            "WARNING",
+                            "双水槽温差过大预警",
+                            "NONE",
+                            1,
+                            1,
+                            now_iso,
+                        ),
+                        (
+                            "rule_overpressure",
+                            "单管路超压保护",
+                            "pressure",
+                            ">=",
+                            800000.0,
+                            "CRITICAL",
+                            "单管道水压超限报警",
+                            "STOP_HEATER",
+                            1,
+                            1,
+                            now_iso,
+                        ),
+                        (
+                            "rule_low_flow",
+                            "微流防干烧保护",
+                            "flow_rate",
+                            "<",
+                            0.05,
+                            "WARNING",
+                            "管道流速过低防干烧预警",
+                            "STOP_HEATER",
+                            1,
+                            1,
+                            now_iso,
+                        ),
+                        (
+                            "rule_tank1_low",
+                            "水槽1低水位报警",
+                            "water_level_tank1",
+                            "<=",
+                            20.0,
+                            "WARNING",
+                            "水槽1液位过低，请注意补水",
+                            "NONE",
+                            1,
+                            0,
+                            now_iso,
+                        ),
+                    ]
+                    cursor.executemany(
+                        """
+                        INSERT INTO alarm_rules (
+                            id, name, metric, operator, threshold, level, message, action, enabled, is_system, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        default_rules,
+                    )
+                    logger.info(f"Seeded {len(default_rules)} default alarm rules into SQLite.")
 
                 conn.commit()
 
@@ -515,6 +616,124 @@ class DatabaseManager:
                 deleted = cursor.rowcount
                 conn.commit()
                 logger.info(f"Cleared {deleted} telemetry records from SQLite.")
+                return deleted
+
+    def _row_to_alarm_rule(self, row: sqlite3.Row) -> AlarmRule:
+        created_at_val = row["created_at"]
+        if isinstance(created_at_val, str):
+            try:
+                created_at = datetime.fromisoformat(created_at_val)
+            except Exception:
+                created_at = datetime.now()
+        else:
+            created_at = datetime.now()
+
+        return AlarmRule(
+            id=row["id"],
+            name=row["name"],
+            metric=row["metric"],
+            operator=row["operator"],
+            threshold=float(row["threshold"]),
+            level=row["level"],
+            message=row["message"],
+            action=row["action"] or "NONE",
+            enabled=bool(row["enabled"]),
+            is_system=bool(row["is_system"]),
+            created_at=created_at,
+        )
+
+    def get_alarm_rules(self) -> List[AlarmRule]:
+        """Returns all configured alarm rules from SQLite."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM alarm_rules ORDER BY is_system DESC, created_at ASC;")
+            rows = cursor.fetchall()
+            return [self._row_to_alarm_rule(r) for r in rows]
+
+    def get_alarm_rule(self, rule_id: str) -> Optional[AlarmRule]:
+        """Returns a single alarm rule by ID."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM alarm_rules WHERE id = ?;", (rule_id,))
+            row = cursor.fetchone()
+            if row:
+                return self._row_to_alarm_rule(row)
+            return None
+
+    def insert_alarm_rule(self, rule: AlarmRule) -> AlarmRule:
+        """Inserts a new alarm rule into SQLite."""
+        now_str = self._format_datetime(rule.created_at or datetime.now())
+        with self._lock:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    INSERT INTO alarm_rules (
+                        id, name, metric, operator, threshold, level, message, action, enabled, is_system, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        rule.id,
+                        rule.name,
+                        rule.metric,
+                        rule.operator,
+                        rule.threshold,
+                        rule.level,
+                        rule.message,
+                        rule.action,
+                        1 if rule.enabled else 0,
+                        1 if rule.is_system else 0,
+                        now_str,
+                    ),
+                )
+                conn.commit()
+                logger.info(f"Inserted new alarm rule: {rule.name} ({rule.id})")
+                return rule
+
+    def update_alarm_rule(self, rule: AlarmRule) -> AlarmRule:
+        """Updates an existing alarm rule in SQLite."""
+        with self._lock:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    UPDATE alarm_rules SET
+                        name = ?,
+                        metric = ?,
+                        operator = ?,
+                        threshold = ?,
+                        level = ?,
+                        message = ?,
+                        action = ?,
+                        enabled = ?
+                    WHERE id = ?;
+                    """,
+                    (
+                        rule.name,
+                        rule.metric,
+                        rule.operator,
+                        rule.threshold,
+                        rule.level,
+                        rule.message,
+                        rule.action,
+                        1 if rule.enabled else 0,
+                        rule.id,
+                    ),
+                )
+                conn.commit()
+                logger.info(f"Updated alarm rule: {rule.name} ({rule.id})")
+                return rule
+
+    def delete_alarm_rule(self, rule_id: str) -> bool:
+        """Deletes an alarm rule from SQLite."""
+        with self._lock:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM alarm_rules WHERE id = ?;", (rule_id,))
+                deleted = cursor.rowcount > 0
+                conn.commit()
+                if deleted:
+                    logger.info(f"Deleted alarm rule {rule_id}")
                 return deleted
 
 

@@ -285,6 +285,13 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            <a
+              href="#alarm-logs-section"
+              className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-lg text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors"
+              title="前往自定义报警规则配置中心"
+            >
+              <span>+ 报警规则配置</span>
+            </a>
             {isDirty && (
               <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200">
                 未保存修改

@@ -86,6 +86,13 @@
 - `GET /api/history/export`: 下载时序历史 CSV 报表（可按时间过滤）。
 - `GET /api/alarms/history`: 查询 SQLite 持久化历史告警日志。
 
+## 报警规则 RESTful API
+
+- `GET /api/alarm-rules`: 获取所有配置的告警规则（支持内置预设与用户自定义规则）。
+- `POST /api/alarm-rules`: 新增自定义报警规则（支持指标、比较符、阈值、告警级别、联动动作与自定义消息）。
+- `PUT /api/alarm-rules/{rule_id}`: 修改或启停指定报警规则。
+- `DELETE /api/alarm-rules/{rule_id}`: 删除指定报警规则。
+
 ## 常用命令
 
 ### 1. 安装/同步依赖

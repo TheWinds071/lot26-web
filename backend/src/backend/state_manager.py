@@ -145,6 +145,9 @@ class StateManager:
         # Run auto-control rule engine if auto mode is on and not emergency stopped
         control_action_taken = self._evaluate_rules(telemetry)
 
+        if control_action_taken:
+            self._notify("device_state_updated", self.device_state.model_dump(mode="json"))
+
         # Notify subscribers (WebSockets)
         status_dump = self.get_system_status().model_dump(mode="json")
         self._notify("telemetry", {
@@ -249,26 +252,32 @@ class StateManager:
         # 4. Auto Control Logic (Temperature Only - Water pump is manually controlled)
         if self.device_state.auto_mode and not self.device_state.emergency_stop:
             avg_temp = (telemetry.temp_tank1 + telemetry.temp_tank2) / 2.0
+            primary_temp = telemetry.temp_tank1
 
-            # Low Temperature Heating Trigger
-            if min_current_temp <= self.thresholds.temp_min or avg_temp <= self.thresholds.temp_min:
-                if not self.device_state.heater_active:
-                    self.device_state.heater_active = True
-                    self.device_state.heater_power = 100
-                    self.device_state.last_updated = datetime.now()
-                    action_taken = True
-                    logger.info(
-                        f"[Auto Control] Low Temp (T1={telemetry.temp_tank1:.1f}°C, T2={telemetry.temp_tank2:.1f}°C <= {self.thresholds.temp_min:.1f}°C) -> Started Heater"
-                    )
-            elif avg_temp >= self.thresholds.temp_target:
-                # Target temperature reached in both tanks, turn off heater
+            # Target temperature reached or max limit protection -> stop heater
+            if (
+                avg_temp >= self.thresholds.temp_target
+                or primary_temp >= self.thresholds.temp_target
+                or telemetry.temp_tank1 >= self.thresholds.temp_max
+                or telemetry.temp_tank2 >= self.thresholds.temp_max
+            ):
                 if self.device_state.heater_active:
                     self.device_state.heater_active = False
                     self.device_state.heater_power = 0
                     self.device_state.last_updated = datetime.now()
                     action_taken = True
                     logger.info(
-                        f"[Auto Control] Target Temp Reached (Avg={avg_temp:.1f}°C >= {self.thresholds.temp_target:.1f}°C) -> Stopped Heater"
+                        f"[Auto Control] Target/Max Temp Reached (Avg={avg_temp:.1f}°C, T1={primary_temp:.1f}°C >= Target={self.thresholds.temp_target:.1f}°C) -> Stopped Heater"
+                    )
+            # Below target temperature -> automatically turn ON heater!
+            elif avg_temp < self.thresholds.temp_target:
+                if not self.device_state.heater_active or self.device_state.heater_power < 100:
+                    self.device_state.heater_active = True
+                    self.device_state.heater_power = 100
+                    self.device_state.last_updated = datetime.now()
+                    action_taken = True
+                    logger.info(
+                        f"[Auto Control] Temp Below Target (Avg={avg_temp:.1f}°C < Target={self.thresholds.temp_target:.1f}°C) -> Started Heater (100%)"
                     )
 
         return action_taken
@@ -294,11 +303,17 @@ class StateManager:
         except Exception as e:
             logger.error(f"[StateManager] Failed to persist thresholds to SQLite: {e}")
         self._notify("thresholds_updated", self.thresholds.model_dump(mode="json"))
+        if self.device_state.auto_mode and self.latest_telemetry and not self.device_state.emergency_stop:
+            if self._evaluate_rules(self.latest_telemetry):
+                self._notify("device_state_updated", self.device_state.model_dump(mode="json"))
         return self.thresholds
 
     def set_auto_mode(self, auto_mode: bool) -> DeviceState:
         self.device_state.auto_mode = auto_mode
+        if auto_mode and self.latest_telemetry and not self.device_state.emergency_stop:
+            self._evaluate_rules(self.latest_telemetry)
         self.device_state.last_updated = datetime.now()
+        self._notify("device_state_updated", self.device_state.model_dump(mode="json"))
         self._notify("mode_changed", {"auto_mode": auto_mode})
         return self.device_state
 

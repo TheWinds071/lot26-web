@@ -98,23 +98,6 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               </p>
             </div>
           </div>
-
-          {/* Mode Switcher */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 font-medium">运行模式</span>
-            <button
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border shadow-xs transition-all duration-200 active:scale-[0.98] ${
-                isAuto
-                  ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
-                  : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
-              }`}
-              onClick={() => onSetMode(!isAuto)}
-              title={isAuto ? "切换为手动模式" : "切换为智能自控模式"}
-            >
-              {isAuto ? <ToggleRight className="w-4 h-4 text-blue-600" /> : <ToggleLeft className="w-4 h-4 text-amber-600" />}
-              <span>{isAuto ? '智能自控' : '手动模式'}</span>
-            </button>
-          </div>
         </div>
 
         {isEmergency && (
@@ -209,7 +192,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
           {/* Heater Control Section */}
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 transition-all duration-200">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <Flame
                   className={`w-4 h-4 ${
@@ -218,23 +201,47 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 />
                 <span className="text-sm font-semibold text-gray-800">水槽1加热模块</span>
               </div>
-              <button
-                disabled={isEmergency}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium shadow-xs transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed ${
-                  isHeaterActive
-                    ? 'bg-amber-600 hover:bg-amber-700 text-white'
-                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                }`}
-                onClick={() => onControlHeater(!isHeaterActive, isHeaterActive ? 0 : 100)}
-              >
-                <Power className="w-3.5 h-3.5" />
-                <span>{isHeaterActive ? '加热中' : '待机'}</span>
-              </button>
+
+              <div className="flex items-center gap-2">
+                {/* 智能自控切换按钮 */}
+                <button
+                  disabled={isEmergency}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border shadow-xs transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed ${
+                    isAuto
+                      ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  }`}
+                  onClick={() => onSetMode(!isAuto)}
+                  title={isAuto ? '当前为智能自控模式（仅控温），点击切换为手动' : '当前为手动模式，点击开启水温智能自控'}
+                >
+                  {isAuto ? (
+                    <ToggleRight className="w-4 h-4 text-blue-600" />
+                  ) : (
+                    <ToggleLeft className="w-4 h-4 text-gray-400" />
+                  )}
+                  <span>{isAuto ? '智能自控' : '手动模式'}</span>
+                </button>
+
+                {/* 加热启停按键 */}
+                <button
+                  disabled={isEmergency || isAuto}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium shadow-xs transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed ${
+                    isHeaterActive
+                      ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                      : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                  }`}
+                  onClick={() => onControlHeater(!isHeaterActive, isHeaterActive ? 0 : 100)}
+                  title={isAuto ? '智能自控生效中，加热状态由恒温规则自动托管' : undefined}
+                >
+                  <Power className="w-3.5 h-3.5" />
+                  <span>{isHeaterActive ? '加热中' : '待机'}</span>
+                </button>
+              </div>
             </div>
 
             <div className="space-y-1.5">
               <div className="flex justify-between text-xs text-gray-600">
-                <span>加热输出功率</span>
+                <span>加热输出功率 {isAuto && <span className="text-blue-600 font-medium">(自控中)</span>}</span>
                 <span className="font-mono font-bold text-gray-900">{heaterPower}%</span>
               </div>
               <input
@@ -243,21 +250,21 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 max="100"
                 step="10"
                 value={heaterPower}
-                disabled={isEmergency}
+                disabled={isEmergency || isAuto}
                 onChange={(e) =>
                   onControlHeater(Number(e.target.value) > 0, Number(e.target.value))
                 }
                 className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-600 disabled:opacity-50"
               />
             </div>
+
+            {isAuto && (
+              <div className="mt-3 p-2.5 rounded-lg bg-blue-50/80 border border-blue-100 text-blue-900 text-xs leading-relaxed">
+                💡 <strong>水温智能自控中</strong>：低于目标温度时自动开启加热，达到目标温度（{tempTarget}°C）或超温时自动停止。加热功率与启闭由系统托管，水泵为手动独立控制。
+              </div>
+            )}
           </div>
         </div>
-
-        {isAuto && (
-          <div className="mt-4 p-3 rounded-lg bg-blue-50/70 border border-blue-100 text-blue-900 text-xs leading-relaxed">
-            💡 <strong>智能自控模式生效中</strong>：系统仅对水温进行闭环自动恒温控制（水温偏低时自动开启加热，达到目标温度时自动停止加热）；水泵启停、转速与输送方向为手动独立控制。
-          </div>
-        )}
       </div>
 
       {/* 2. Threshold Configuration Card */}

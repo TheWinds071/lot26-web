@@ -5,7 +5,7 @@ import { PipelineTopology } from './components/PipelineTopology';
 import { RealtimeCharts } from './components/RealtimeCharts';
 import { ControlPanel } from './components/ControlPanel';
 import { AlarmLogs } from './components/AlarmLogs';
-import type { SystemStatus, TelemetryData, ThresholdConfig } from './types';
+import type { DeviceState, SystemStatus, TelemetryData, ThresholdConfig } from './types';
 
 export const App: React.FC = () => {
   const [status, setStatus] = useState<SystemStatus | null>(null);
@@ -72,6 +72,10 @@ export const App: React.FC = () => {
           } else if (payload.type === 'device_state_updated') {
             setStatus((prev) =>
               prev ? { ...prev, device_state: payload.data } : null
+            );
+          } else if (payload.type === 'mode_changed') {
+            setStatus((prev) =>
+              prev ? { ...prev, device_state: { ...prev.device_state, auto_mode: payload.data.auto_mode } } : null
             );
           } else if (payload.type === 'thresholds_updated') {
             setStatus((prev) =>
@@ -165,11 +169,15 @@ export const App: React.FC = () => {
   const handleSetMode = async (autoMode: boolean) => {
     sendWsMessage({ action: 'set_mode', auto_mode: autoMode });
     try {
-      await fetch('/api/control/mode', {
+      const res = await fetch('/api/control/mode', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ auto_mode: autoMode }),
       });
+      if (res.ok) {
+        const state: DeviceState = await res.json();
+        setStatus((prev) => (prev ? { ...prev, device_state: state } : null));
+      }
       fetchStatus();
     } catch (e) {
       console.error(e);

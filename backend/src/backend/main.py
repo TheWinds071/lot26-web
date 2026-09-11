@@ -219,13 +219,29 @@ async def get_thresholds():
 async def update_thresholds(config: ThresholdConfig):
     """Updates auto-control threshold rules."""
     updated = state_manager.update_thresholds(config)
+    if state_manager.device_state.auto_mode:
+        await tcp_server.broadcast_downlink({
+            "cmd": "MODE_CHANGE",
+            "auto_mode": state_manager.device_state.auto_mode,
+            "heater_active": state_manager.device_state.heater_active,
+            "heater_power": state_manager.device_state.heater_power,
+            "pump_active": state_manager.device_state.pump_active,
+        })
     return updated
 
 
 @app.post("/api/control/mode", response_model=DeviceState)
 async def set_control_mode(req: ModeRequest):
     """Toggles Auto/Manual control mode."""
-    return state_manager.set_auto_mode(req.auto_mode)
+    state = state_manager.set_auto_mode(req.auto_mode)
+    await tcp_server.broadcast_downlink({
+        "cmd": "MODE_CHANGE",
+        "auto_mode": state.auto_mode,
+        "heater_active": state.heater_active,
+        "heater_power": state.heater_power,
+        "pump_active": state.pump_active,
+    })
+    return state
 
 
 @app.post("/api/control/emergency_stop", response_model=DeviceState)
@@ -293,21 +309,51 @@ async def websocket_telemetry(websocket: WebSocket):
                 msg = json.loads(text)
                 action = msg.get("action")
                 if action == "set_mode":
-                    state_manager.set_auto_mode(msg.get("auto_mode", True))
+                    state = state_manager.set_auto_mode(msg.get("auto_mode", True))
+                    await tcp_server.broadcast_downlink({
+                        "cmd": "MODE_CHANGE",
+                        "auto_mode": state.auto_mode,
+                        "heater_active": state.heater_active,
+                        "heater_power": state.heater_power,
+                        "pump_active": state.pump_active,
+                    })
                 elif action == "set_pump":
-                    state_manager.control_pump(
+                    state = state_manager.control_pump(
                         msg.get("active", False),
                         msg.get("speed"),
                         msg.get("direction"),
                     )
+                    await tcp_server.broadcast_downlink({
+                        "cmd": "PUMP_CONTROL",
+                        "pump_active": state.pump_active,
+                        "pump_speed": state.pump_speed,
+                        "pump_direction": state.pump_direction,
+                    })
                 elif action == "set_heater":
-                    state_manager.control_heater(
+                    state = state_manager.control_heater(
                         msg.get("active", False), msg.get("power")
                     )
+                    await tcp_server.broadcast_downlink({
+                        "cmd": "HEATER_CONTROL",
+                        "heater_active": state.heater_active,
+                        "heater_power": state.heater_power,
+                    })
                 elif action == "set_emergency_stop":
-                    state_manager.set_emergency_stop(msg.get("emergency_stop", False))
+                    state = state_manager.set_emergency_stop(msg.get("emergency_stop", False))
+                    await tcp_server.broadcast_downlink({
+                        "cmd": "EMERGENCY_STOP",
+                        "emergency_stop": state.emergency_stop,
+                    })
                 elif action == "update_thresholds":
                     state_manager.update_thresholds(ThresholdConfig(**msg.get("thresholds", {})))
+                    if state_manager.device_state.auto_mode:
+                        await tcp_server.broadcast_downlink({
+                            "cmd": "MODE_CHANGE",
+                            "auto_mode": state_manager.device_state.auto_mode,
+                            "heater_active": state_manager.device_state.heater_active,
+                            "heater_power": state_manager.device_state.heater_power,
+                            "pump_active": state_manager.device_state.pump_active,
+                        })
             except Exception as e:
                 logger.error(f"[WebSocket] Command handling error: {e}")
 

@@ -1516,27 +1516,28 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
                   )
                 }
                 disabled={isLoadingHistory}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs disabled:opacity-50"
+                className="inline-flex items-center justify-center p-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs disabled:opacity-50 cursor-pointer"
+                title="刷新历史数据"
+                aria-label="刷新历史数据"
               >
                 <RefreshCw
                   className={`w-3.5 h-3.5 ${
                     isLoadingHistory ? 'animate-spin text-indigo-600' : ''
                   }`}
                 />
-                刷新数据
               </button>
               <button
                 onClick={handleClearDatabaseHistory}
                 disabled={isClearingHistory || isLoadingHistory}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 hover:border-rose-300 transition-colors shadow-2xs disabled:opacity-50 cursor-pointer"
+                className="inline-flex items-center justify-center p-1.5 text-xs font-medium rounded-lg border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 hover:border-rose-300 transition-colors shadow-2xs disabled:opacity-50 cursor-pointer"
                 title="清空 SQLite 数据库中的所有历史遥测记录"
+                aria-label="清空历史数据"
               >
                 <Trash2
                   className={`w-3.5 h-3.5 ${
                     isClearingHistory ? 'animate-spin text-rose-600' : ''
                   }`}
                 />
-                {isClearingHistory ? '清除中...' : '清除历史数据'}
               </button>
               <button
                 onClick={() => {

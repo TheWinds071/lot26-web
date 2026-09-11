@@ -140,23 +140,41 @@ class TCPServer:
                                 f"Press={telemetry.pressure:.0f}Pa, "
                                 f"Flow={telemetry.flow_rate:.2f}L/min"
                             )
+                            prev_heater_active = state_manager.device_state.heater_active
+                            prev_heater_power = state_manager.device_state.heater_power
+
                             # Process through auto-control engine & store state
                             state_manager.process_telemetry(telemetry)
 
-                            # Downlink command response to client/PLC actuator
+                            # Downlink command response to client/PLC actuator (same manual command structure, no auto_mode)
                             response = {
                                 "status": "ACK",
+                                "cmd": "HEATER_CONTROL",
+                                "heater_active": state_manager.device_state.heater_active,
+                                "heater_power": state_manager.device_state.heater_power,
                                 "pump_active": state_manager.device_state.pump_active,
                                 "pump_speed": state_manager.device_state.pump_speed,
                                 "pump_direction": state_manager.device_state.pump_direction,
-                                "heater_active": state_manager.device_state.heater_active,
-                                "heater_power": state_manager.device_state.heater_power,
                                 "emergency_stop": state_manager.device_state.emergency_stop,
-                                "auto_mode": state_manager.device_state.auto_mode,
                                 "timestamp": datetime.now().isoformat(),
                             }
                             writer.write((json.dumps(response) + "\n").encode("utf-8"))
                             await writer.drain()
+
+                            # If auto-control rule engine changed heater state, broadcast the explicit manual-style HEATER_CONTROL command
+                            if (
+                                state_manager.device_state.heater_active != prev_heater_active
+                                or state_manager.device_state.heater_power != prev_heater_power
+                            ):
+                                logger.info(
+                                    f"[Auto Control -> TCP Client] Heater state changed, sending manual command: "
+                                    f"cmd=HEATER_CONTROL, active={state_manager.device_state.heater_active}, power={state_manager.device_state.heater_power}"
+                                )
+                                await self.broadcast_downlink({
+                                    "cmd": "HEATER_CONTROL",
+                                    "heater_active": state_manager.device_state.heater_active,
+                                    "heater_power": state_manager.device_state.heater_power,
+                                })
                         else:
                             logger.warning(f"[TCP Server] Unrecognized payload: {line}")
                             writer.write(b'{"status":"ERROR","message":"Invalid payload format"}\n')

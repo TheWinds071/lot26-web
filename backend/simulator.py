@@ -143,21 +143,28 @@ class SinglePipeDualTankSimulator:
                     # Read downlink feedback from TCP Server
                     try:
                         resp_data = await asyncio.wait_for(reader.readline(), timeout=self.interval * 1.5)
-                        if resp_data:
-                            resp_json = json.loads(resp_data.decode("utf-8").strip())
-                            # Apply server actuator state updates to simulation
-                            if "pump_active" in resp_json:
-                                self.pump_active = resp_json["pump_active"]
-                            if "pump_speed" in resp_json:
-                                self.pump_speed = resp_json["pump_speed"]
-                            if "pump_direction" in resp_json:
-                                self.pump_direction = resp_json["pump_direction"]
-                            if "heater_active" in resp_json:
-                                self.heater_active = resp_json["heater_active"]
-                            if "heater_power" in resp_json:
-                                self.heater_power = resp_json["heater_power"]
-                            if "emergency_stop" in resp_json:
-                                self.emergency_stop = resp_json["emergency_stop"]
+                        while resp_data:
+                            line = resp_data.decode("utf-8").strip()
+                            if line:
+                                resp_json = json.loads(line)
+                                # Apply server actuator state updates to simulation
+                                if "pump_active" in resp_json:
+                                    self.pump_active = resp_json["pump_active"]
+                                if "pump_speed" in resp_json:
+                                    self.pump_speed = resp_json["pump_speed"]
+                                if "pump_direction" in resp_json:
+                                    self.pump_direction = resp_json["pump_direction"]
+                                if "heater_active" in resp_json:
+                                    self.heater_active = resp_json["heater_active"]
+                                if "heater_power" in resp_json:
+                                    self.heater_power = resp_json["heater_power"]
+                                if "emergency_stop" in resp_json:
+                                    self.emergency_stop = resp_json["emergency_stop"]
+                            # Drain any additional queued lines in reader buffer
+                            if not reader.at_eof() and reader._buffer:
+                                resp_data = await reader.readline()
+                            else:
+                                break
                     except asyncio.TimeoutError:
                         pass
                     except Exception as e:

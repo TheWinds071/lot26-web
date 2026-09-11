@@ -270,14 +270,20 @@ class StateManager:
                         f"[Auto Control] Target/Max Temp Reached (Avg={avg_temp:.1f}°C, T1={primary_temp:.1f}°C >= Target={self.thresholds.temp_target:.1f}°C) -> Stopped Heater"
                     )
             # Below target temperature -> automatically turn ON heater!
-            elif avg_temp < self.thresholds.temp_target:
+            elif (
+                avg_temp < self.thresholds.temp_target
+                and primary_temp < self.thresholds.temp_target
+                and max_current_temp < self.thresholds.temp_max
+                and telemetry.pressure < effective_pressure_max
+                and not (self.device_state.pump_active and telemetry.flow_rate < effective_flow_min)
+            ):
                 if not self.device_state.heater_active or self.device_state.heater_power < 100:
                     self.device_state.heater_active = True
                     self.device_state.heater_power = 100
                     self.device_state.last_updated = datetime.now()
                     action_taken = True
                     logger.info(
-                        f"[Auto Control] Temp Below Target (Avg={avg_temp:.1f}°C < Target={self.thresholds.temp_target:.1f}°C) -> Started Heater (100%)"
+                        f"[Auto Control] Temp Below Target (Avg={avg_temp:.1f}°C, T1={primary_temp:.1f}°C < Target={self.thresholds.temp_target:.1f}°C) -> Started Heater (100%)"
                     )
 
         return action_taken

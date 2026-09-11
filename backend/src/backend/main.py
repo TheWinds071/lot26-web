@@ -221,11 +221,9 @@ async def update_thresholds(config: ThresholdConfig):
     updated = state_manager.update_thresholds(config)
     if state_manager.device_state.auto_mode:
         await tcp_server.broadcast_downlink({
-            "cmd": "MODE_CHANGE",
-            "auto_mode": state_manager.device_state.auto_mode,
+            "cmd": "HEATER_CONTROL",
             "heater_active": state_manager.device_state.heater_active,
             "heater_power": state_manager.device_state.heater_power,
-            "pump_active": state_manager.device_state.pump_active,
         })
     return updated
 
@@ -234,12 +232,11 @@ async def update_thresholds(config: ThresholdConfig):
 async def set_control_mode(req: ModeRequest):
     """Toggles Auto/Manual control mode."""
     state = state_manager.set_auto_mode(req.auto_mode)
+    # In auto control mode, send the same manual command (HEATER_CONTROL) as manual mode to the client
     await tcp_server.broadcast_downlink({
-        "cmd": "MODE_CHANGE",
-        "auto_mode": state.auto_mode,
+        "cmd": "HEATER_CONTROL",
         "heater_active": state.heater_active,
         "heater_power": state.heater_power,
-        "pump_active": state.pump_active,
     })
     return state
 
@@ -311,11 +308,9 @@ async def websocket_telemetry(websocket: WebSocket):
                 if action == "set_mode":
                     state = state_manager.set_auto_mode(msg.get("auto_mode", True))
                     await tcp_server.broadcast_downlink({
-                        "cmd": "MODE_CHANGE",
-                        "auto_mode": state.auto_mode,
+                        "cmd": "HEATER_CONTROL",
                         "heater_active": state.heater_active,
                         "heater_power": state.heater_power,
-                        "pump_active": state.pump_active,
                     })
                 elif action == "set_pump":
                     state = state_manager.control_pump(
@@ -348,11 +343,9 @@ async def websocket_telemetry(websocket: WebSocket):
                     state_manager.update_thresholds(ThresholdConfig(**msg.get("thresholds", {})))
                     if state_manager.device_state.auto_mode:
                         await tcp_server.broadcast_downlink({
-                            "cmd": "MODE_CHANGE",
-                            "auto_mode": state_manager.device_state.auto_mode,
+                            "cmd": "HEATER_CONTROL",
                             "heater_active": state_manager.device_state.heater_active,
                             "heater_power": state_manager.device_state.heater_power,
-                            "pump_active": state_manager.device_state.pump_active,
                         })
             except Exception as e:
                 logger.error(f"[WebSocket] Command handling error: {e}")

@@ -199,7 +199,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     isHeaterActive ? 'text-amber-500 animate-pulse' : 'text-gray-400'
                   }`}
                 />
-                <span className="text-sm font-semibold text-gray-800">水槽1加热模块</span>
+                <span className="text-sm font-semibold text-gray-800">水槽2加热模块</span>
               </div>
 
               <div className="flex items-center gap-2">
@@ -343,7 +343,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   °C
                 </span>
               </div>
-              <span className="text-[11px] text-gray-500">水槽1水温达到此值时自动关闭加热（防止过冲）</span>
+              <span className="text-[11px] text-gray-500">水槽2水温达到此值时自动关闭加热（防止过冲）</span>
             </div>
 
             {/* Max Temp */}

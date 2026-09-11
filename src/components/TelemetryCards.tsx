@@ -30,32 +30,32 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
   const pumpDirection = deviceState?.pump_direction ?? 'FORWARD';
   const isPumpActive = deviceState?.pump_active ?? false;
 
-  // Temperature Status for Tank 1
-  let t1StatusText = "正常恒温";
+  // Temperature Status for Tank 1 (Storage Tank)
+  let t1StatusText = "正常储水";
   let t1StatusClass = "bg-emerald-50 text-emerald-700 border-emerald-200";
   if (t1 >= tempMax) {
     t1StatusText = "超温告警";
     t1StatusClass = "bg-rose-50 text-rose-700 border-rose-200";
-  } else if (deviceState?.heater_active) {
-    t1StatusText = "加热升温中";
-    t1StatusClass = "bg-amber-50 text-amber-700 border-amber-200";
-  } else if (t1 >= tempTarget) {
-    t1StatusText = "恒温达标";
-    t1StatusClass = "bg-emerald-50 text-emerald-700 border-emerald-200";
   } else if (t1 < tempMin) {
     t1StatusText = "水温偏低";
     t1StatusClass = "bg-blue-50 text-blue-700 border-blue-200";
   }
 
-  // Temperature Status for Tank 2
-  let t2StatusText = "循环恒温";
+  // Temperature Status for Tank 2 (Heating Module Tank)
+  let t2StatusText = "正常恒温";
   let t2StatusClass = "bg-emerald-50 text-emerald-700 border-emerald-200";
-  if (t2 < tempMin) {
-    t2StatusText = "回水偏低";
-    t2StatusClass = "bg-blue-50 text-blue-700 border-blue-200";
-  } else if (t2 > tempMax) {
+  if (t2 >= tempMax) {
     t2StatusText = "超温告警";
     t2StatusClass = "bg-rose-50 text-rose-700 border-rose-200";
+  } else if (deviceState?.heater_active) {
+    t2StatusText = "加热升温中";
+    t2StatusClass = "bg-amber-50 text-amber-700 border-amber-200";
+  } else if (t2 >= tempTarget) {
+    t2StatusText = "恒温达标";
+    t2StatusClass = "bg-emerald-50 text-emerald-700 border-emerald-200";
+  } else if (t2 < tempMin) {
+    t2StatusText = "水温偏低";
+    t2StatusClass = "bg-blue-50 text-blue-700 border-blue-200";
   }
 
   // Pressure Status (Pa)
@@ -107,7 +107,7 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
               {t1StatusText}
             </span>
           </div>
-          <span className="text-xs font-medium text-gray-500 block">水槽 1 水温 (Tank 1 Temp)</span>
+          <span className="text-xs font-medium text-gray-500 block">水槽 1 水温 (Tank 1 / 储水槽)</span>
           <div className="flex items-baseline gap-1.5 mt-1 mb-3">
             <span className="text-3xl font-bold tracking-tight text-gray-900 font-mono">
               {t1.toFixed(1)}
@@ -124,8 +124,8 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
             ></div>
           </div>
           <div className="flex justify-between text-xs text-gray-500 font-normal">
-            <span>目标: {tempTarget}°C</span>
-            <span>区间: {tempMin} ~ {tempMax}°C</span>
+            <span>储水常温</span>
+            <span>保护上限: {tempMax}°C</span>
           </div>
         </div>
       </div>
@@ -141,7 +141,7 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
               {t2StatusText}
             </span>
           </div>
-          <span className="text-xs font-medium text-gray-500 block">水槽 2 水温 (Tank 2 Temp)</span>
+          <span className="text-xs font-medium text-gray-500 block">水槽 2 水温 (Tank 2 / 加热主槽)</span>
           <div className="flex items-baseline gap-1.5 mt-1 mb-3">
             <span className="text-3xl font-bold tracking-tight text-gray-900 font-mono">
               {t2.toFixed(1)}

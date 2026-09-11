@@ -73,31 +73,31 @@ class SinglePipeDualTankSimulator:
             self.temp_tank1 += 2.0 * dt
             self.temp_tank2 += 1.5 * dt
         else:
-            # Heater in Tank 1
+            # Heater in Tank 2
             if self.heater_active and not self.emergency_stop:
                 heat_power_factor = (self.heater_power / 100.0) * 1.6
                 flow_factor = 1.0 if self.flow_rate < 5 else 30.0 / (self.flow_rate + 10.0)
-                self.temp_tank1 += heat_power_factor * flow_factor * dt * 0.35
+                self.temp_tank2 += heat_power_factor * flow_factor * dt * 0.35
             else:
                 # Natural cooling towards ambient
-                self.temp_tank1 += (self.ambient_temp - self.temp_tank1) * 0.03 * dt
+                self.temp_tank2 += (self.ambient_temp - self.temp_tank2) * 0.03 * dt
+
+            # Tank 1 natural ambient cooling
+            self.temp_tank1 += (self.ambient_temp - self.temp_tank1) * 0.02 * dt
 
             # Single-Pipe Water Transfer between Tank 1 and Tank 2
             if self.pump_active and self.flow_rate > 1.0:
                 transfer_rate = min(0.35, (self.flow_rate / 30.0) * 0.15 * dt)
                 if self.pump_direction == "FORWARD":
-                    # FORWARD (1 -> 2): Hot water flows from Tank 1 into Tank 2
+                    # FORWARD (1 -> 2): Water flows from Tank 1 into Tank 2
                     self.temp_tank2 += (self.temp_tank1 - self.temp_tank2) * transfer_rate
                     self.water_level_tank1 = max(30.0, self.water_level_tank1 - 0.2 * dt)
                     self.water_level_tank2 = min(90.0, self.water_level_tank2 + 0.2 * dt)
                 else:
-                    # REVERSE (2 -> 1): Water flows from Tank 2 back into Tank 1
+                    # REVERSE (2 -> 1): Hot water from Tank 2 flows into Tank 1
                     self.temp_tank1 += (self.temp_tank2 - self.temp_tank1) * transfer_rate
                     self.water_level_tank1 = min(90.0, self.water_level_tank1 + 0.2 * dt)
                     self.water_level_tank2 = max(30.0, self.water_level_tank2 - 0.2 * dt)
-            else:
-                # Tank 2 natural ambient cooling
-                self.temp_tank2 += (self.ambient_temp - self.temp_tank2) * 0.02 * dt
 
         self.temp_tank1 += random.uniform(-0.03, 0.03)
         self.temp_tank2 += random.uniform(-0.03, 0.03)

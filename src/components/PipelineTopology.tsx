@@ -171,7 +171,7 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
           <rect x="185" y="153" width="8" height="44" rx="2" fill="#94a3b8" />
           <rect x="787" y="153" width="8" height="44" rx="2" fill="#94a3b8" />
 
-          {/* ================= TANK 1 (Left: 储水槽1 / 供水加热) ================= */}
+          {/* ================= TANK 1 (Left: 储水槽1 / 常温储水) ================= */}
           <g transform="translate(60, 45)">
             {/* Tank Outer Shell */}
             <rect x="0" y="0" width="130" height="230" rx="12" fill="#ffffff" stroke="#94a3b8" strokeWidth="2.5" />
@@ -192,31 +192,7 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
             />
             {/* Titles */}
             <text x="65" y="32" fill="#0f172a" fontSize="13" fontWeight="bold" textAnchor="middle">水槽 1 (Tank 1)</text>
-            <text x="65" y="48" fill="#0284c7" fontSize="10.5" fontWeight="500" textAnchor="middle">主水槽 / 恒温区</text>
-
-            {/* Heating Element inside Tank 1 */}
-            <g transform="translate(25, 175)">
-              <rect
-                x="0"
-                y="0"
-                width="80"
-                height="32"
-                rx="6"
-                fill="#ffffff"
-                stroke={isHeaterOn ? "#f97316" : "#cbd5e1"}
-                strokeWidth="2"
-              />
-              <path
-                d="M 12 16 Q 25 6, 40 16 T 68 16"
-                fill="none"
-                stroke={isHeaterOn ? "#ef4444" : "#94a3b8"}
-                strokeWidth="3"
-                strokeLinecap="round"
-              />
-              <text x="40" y="44" fill={isHeaterOn ? "#ea580c" : "#64748b"} fontSize="10" fontWeight="600" textAnchor="middle">
-                {isHeaterOn ? `加热 ${heaterPower}%` : '加热器 待机'}
-              </text>
-            </g>
+            <text x="65" y="48" fill="#0284c7" fontSize="10.5" fontWeight="500" textAnchor="middle">储水槽 / 常温供水</text>
 
             {/* Temperature Sensor 1 Probe */}
             <g transform="translate(105, -25)">
@@ -281,7 +257,7 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
             <text x="42" y="74" fill="#334155" fontSize="11" fontWeight="600" textAnchor="middle">双向流量传感器</text>
           </g>
 
-          {/* ================= TANK 2 (Right: 储水槽2 / 循环受水) ================= */}
+          {/* ================= TANK 2 (Right: 储水槽2 / 恒温加热) ================= */}
           <g transform="translate(790, 45)">
             {/* Tank Outer Shell */}
             <rect x="0" y="0" width="130" height="230" rx="12" fill="#ffffff" stroke="#94a3b8" strokeWidth="2.5" />
@@ -302,7 +278,31 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
             />
             {/* Titles */}
             <text x="65" y="32" fill="#0f172a" fontSize="13" fontWeight="bold" textAnchor="middle">水槽 2 (Tank 2)</text>
-            <text x="65" y="48" fill="#0284c7" fontSize="10.5" fontWeight="500" textAnchor="middle">循环水槽 / 反应区</text>
+            <text x="65" y="48" fill="#0284c7" fontSize="10.5" fontWeight="500" textAnchor="middle">加热水槽 / 恒温区</text>
+
+            {/* Heating Element inside Tank 2 */}
+            <g transform="translate(25, 175)">
+              <rect
+                x="0"
+                y="0"
+                width="80"
+                height="32"
+                rx="6"
+                fill="#ffffff"
+                stroke={isHeaterOn ? "#f97316" : "#cbd5e1"}
+                strokeWidth="2"
+              />
+              <path
+                d="M 12 16 Q 25 6, 40 16 T 68 16"
+                fill="none"
+                stroke={isHeaterOn ? "#ef4444" : "#94a3b8"}
+                strokeWidth="3"
+                strokeLinecap="round"
+              />
+              <text x="40" y="44" fill={isHeaterOn ? "#ea580c" : "#64748b"} fontSize="10" fontWeight="600" textAnchor="middle">
+                {isHeaterOn ? `加热 ${heaterPower}%` : '加热器 待机'}
+              </text>
+            </g>
 
             {/* Temperature Sensor 2 Probe */}
             <g transform="translate(25, -25)">

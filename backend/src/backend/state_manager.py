@@ -252,7 +252,7 @@ class StateManager:
         # 4. Auto Control Logic (Temperature Only - Water pump is manually controlled)
         if self.device_state.auto_mode and not self.device_state.emergency_stop:
             avg_temp = (telemetry.temp_tank1 + telemetry.temp_tank2) / 2.0
-            primary_temp = telemetry.temp_tank1
+            primary_temp = telemetry.temp_tank2  # 加热模块位于水槽2
 
             # Target temperature reached or max limit protection -> stop heater
             if (
@@ -267,7 +267,7 @@ class StateManager:
                     self.device_state.last_updated = datetime.now()
                     action_taken = True
                     logger.info(
-                        f"[Auto Control] Target/Max Temp Reached (Avg={avg_temp:.1f}°C, T1={primary_temp:.1f}°C >= Target={self.thresholds.temp_target:.1f}°C) -> Stopped Heater"
+                        f"[Auto Control] Target/Max Temp Reached (Avg={avg_temp:.1f}°C, T2={primary_temp:.1f}°C >= Target={self.thresholds.temp_target:.1f}°C) -> Stopped Heater"
                     )
             # Below target temperature -> automatically turn ON heater!
             elif (
@@ -295,7 +295,7 @@ class StateManager:
                     self.device_state.last_updated = datetime.now()
                     action_taken = True
                     logger.info(
-                        f"[Auto Control] Temp Below Min (Avg={avg_temp:.1f}°C, T1={primary_temp:.1f}°C <= Min={effective_temp_min:.1f}°C) -> Started Heater (100%)"
+                        f"[Auto Control] Temp Below Min (Avg={avg_temp:.1f}°C, T2={primary_temp:.1f}°C <= Min={effective_temp_min:.1f}°C) -> Started Heater (100%)"
                     )
 
         return action_taken
@@ -330,7 +330,7 @@ class StateManager:
         self.device_state.auto_mode = auto_mode
         if auto_mode and self.latest_telemetry and not self.device_state.emergency_stop:
             if (
-                self.latest_telemetry.temp_tank1 < self.thresholds.temp_target
+                self.latest_telemetry.temp_tank2 < self.thresholds.temp_target
                 and max(self.latest_telemetry.temp_tank1, self.latest_telemetry.temp_tank2) < self.thresholds.temp_max
             ):
                 self.device_state.heater_active = True

@@ -33,12 +33,18 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
   // Temperature Status for Tank 1
   let t1StatusText = "正常恒温";
   let t1StatusClass = "bg-emerald-50 text-emerald-700 border-emerald-200";
-  if (t1 < tempMin) {
-    t1StatusText = "水温偏低 (加热)";
-    t1StatusClass = "bg-blue-50 text-blue-700 border-blue-200";
-  } else if (t1 > tempMax) {
+  if (t1 >= tempMax) {
     t1StatusText = "超温告警";
     t1StatusClass = "bg-rose-50 text-rose-700 border-rose-200";
+  } else if (deviceState?.heater_active) {
+    t1StatusText = "加热升温中";
+    t1StatusClass = "bg-amber-50 text-amber-700 border-amber-200";
+  } else if (t1 >= tempTarget) {
+    t1StatusText = "恒温达标";
+    t1StatusClass = "bg-emerald-50 text-emerald-700 border-emerald-200";
+  } else if (t1 < tempMin) {
+    t1StatusText = "水温偏低";
+    t1StatusClass = "bg-blue-50 text-blue-700 border-blue-200";
   }
 
   // Temperature Status for Tank 2

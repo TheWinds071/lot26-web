@@ -343,7 +343,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   °C
                 </span>
               </div>
-              <span className="text-[11px] text-gray-500">平均水温达到此值时自动关闭加热</span>
+              <span className="text-[11px] text-gray-500">水槽1水温达到此值时自动关闭加热（防止过冲）</span>
             </div>
 
             {/* Max Temp */}

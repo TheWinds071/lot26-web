@@ -277,13 +277,25 @@ class StateManager:
                 and telemetry.pressure < effective_pressure_max
                 and not (self.device_state.pump_active and telemetry.flow_rate < effective_flow_min)
             ):
-                if not self.device_state.heater_active or self.device_state.heater_power < 100:
+                # Apply hysteresis: if heater is off, only start when temp falls to/below min threshold
+                # (or at least 1°C below target) to prevent rapid on/off toggling near target temp
+                effective_temp_min = (
+                    self.thresholds.temp_min
+                    if self.thresholds.temp_min < self.thresholds.temp_target
+                    else (self.thresholds.temp_target - 1.0)
+                )
+                should_turn_on = (
+                    self.device_state.heater_active
+                    or primary_temp <= effective_temp_min
+                    or avg_temp <= effective_temp_min
+                )
+                if should_turn_on and (not self.device_state.heater_active or self.device_state.heater_power < 100):
                     self.device_state.heater_active = True
                     self.device_state.heater_power = 100
                     self.device_state.last_updated = datetime.now()
                     action_taken = True
                     logger.info(
-                        f"[Auto Control] Temp Below Target (Avg={avg_temp:.1f}°C, T1={primary_temp:.1f}°C < Target={self.thresholds.temp_target:.1f}°C) -> Started Heater (100%)"
+                        f"[Auto Control] Temp Below Min (Avg={avg_temp:.1f}°C, T1={primary_temp:.1f}°C <= Min={effective_temp_min:.1f}°C) -> Started Heater (100%)"
                     )
 
         return action_taken
@@ -317,6 +329,12 @@ class StateManager:
     def set_auto_mode(self, auto_mode: bool) -> DeviceState:
         self.device_state.auto_mode = auto_mode
         if auto_mode and self.latest_telemetry and not self.device_state.emergency_stop:
+            if (
+                self.latest_telemetry.temp_tank1 < self.thresholds.temp_target
+                and max(self.latest_telemetry.temp_tank1, self.latest_telemetry.temp_tank2) < self.thresholds.temp_max
+            ):
+                self.device_state.heater_active = True
+                self.device_state.heater_power = 100
             self._evaluate_rules(self.latest_telemetry)
         self.device_state.last_updated = datetime.now()
         self._notify("device_state_updated", self.device_state.model_dump(mode="json"))

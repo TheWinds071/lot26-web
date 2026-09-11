@@ -255,7 +255,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
         {isAuto && (
           <div className="mt-4 p-3 rounded-lg bg-blue-50/70 border border-blue-100 text-blue-900 text-xs leading-relaxed">
-            💡 <strong>智能自控模式生效中</strong>：单管路系统根据双水槽水温与温差闭环控制水泵正反转及加热，超压（&ge;0.80 MPa）或低流量（&lt;5.0 L/min）时自动切断保护。
+            💡 <strong>智能自控模式生效中</strong>：系统仅对水温进行闭环自动恒温控制（水温偏低时自动开启加热，达到目标温度时自动停止加热）；水泵启停、转速与输送方向为手动独立控制。
           </div>
         )}
       </div>

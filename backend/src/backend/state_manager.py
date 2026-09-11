@@ -184,9 +184,8 @@ class StateManager:
                 message=f"单管道压力超限: {telemetry.pressure:.0f} Pa (上限 {effective_pressure_max:.0f} Pa)",
                 value=telemetry.pressure,
             )
-            # Pressure safety action: stop pump & heater immediately
-            if self.device_state.auto_mode and self.device_state.pump_active:
-                self.device_state.pump_active = False
+            # Pressure safety action: stop heater immediately
+            if self.device_state.heater_active:
                 self.device_state.heater_active = False
                 self.device_state.heater_power = 0
                 self.device_state.last_updated = datetime.now()
@@ -247,20 +246,20 @@ class StateManager:
         else:
             self.resolve_alarm("LOW_FLOW")
 
-        # 4. Auto Control Logic (Smart Bidirectional Transfer & Heating)
+        # 4. Auto Control Logic (Temperature Only - Water pump is manually controlled)
         if self.device_state.auto_mode and not self.device_state.emergency_stop:
             avg_temp = (telemetry.temp_tank1 + telemetry.temp_tank2) / 2.0
 
             # Low Temperature Heating Trigger
             if min_current_temp <= self.thresholds.temp_min or avg_temp <= self.thresholds.temp_min:
-                # Need heating: if Tank 1 (with heater) is colder or if Tank 2 needs hot water from Tank 1
-                if not self.device_state.heater_active or not self.device_state.pump_active:
-                    self.device_state.pump_active = True
+                if not self.device_state.heater_active:
                     self.device_state.heater_active = True
                     self.device_state.heater_power = 100
                     self.device_state.last_updated = datetime.now()
                     action_taken = True
-                    logger.info(f"[Auto Control] Low Temp (T1={telemetry.temp_tank1:.1f}°C, T2={telemetry.temp_tank2:.1f}°C <= {self.thresholds.temp_min}°C) -> Started Heater & Pump ({self.device_state.pump_direction})")
+                    logger.info(
+                        f"[Auto Control] Low Temp (T1={telemetry.temp_tank1:.1f}°C, T2={telemetry.temp_tank2:.1f}°C <= {self.thresholds.temp_min:.1f}°C) -> Started Heater"
+                    )
             elif avg_temp >= self.thresholds.temp_target:
                 # Target temperature reached in both tanks, turn off heater
                 if self.device_state.heater_active:
@@ -268,14 +267,9 @@ class StateManager:
                     self.device_state.heater_power = 0
                     self.device_state.last_updated = datetime.now()
                     action_taken = True
-                    logger.info(f"[Auto Control] Target Temp Reached (Avg={avg_temp:.1f}°C >= {self.thresholds.temp_target}°C) -> Stopped Heater")
-
-            # Maintain inter-tank fluid flow if pump stopped
-            effective_pressure_max = self.thresholds.pressure_max * 1_000_000.0 if self.thresholds.pressure_max < 10.0 else self.thresholds.pressure_max
-            if not self.device_state.pump_active and telemetry.pressure < effective_pressure_max:
-                self.device_state.pump_active = True
-                self.device_state.last_updated = datetime.now()
-                action_taken = True
+                    logger.info(
+                        f"[Auto Control] Target Temp Reached (Avg={avg_temp:.1f}°C >= {self.thresholds.temp_target:.1f}°C) -> Stopped Heater"
+                    )
 
         return action_taken
 

@@ -1,16 +1,24 @@
 import React from 'react';
 import { ArrowLeftRight, Waves } from 'lucide-react';
-import type { DeviceState, TelemetryData } from '../types';
+import type { DeviceState, SystemConfigResponse, TelemetryData } from '../types';
 
 interface PipelineTopologyProps {
   telemetry?: TelemetryData;
   deviceState?: DeviceState;
+  systemConfig?: SystemConfigResponse | null;
 }
 
 export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
   telemetry,
   deviceState,
+  systemConfig,
 }) => {
+  const tank1Cfg = systemConfig?.config?.storage_tank;
+  const tank2Cfg = systemConfig?.config?.heating_tank;
+  const tank1Name = tank1Cfg?.name || '水槽 1';
+  const tank2Name = tank2Cfg?.name || '水槽 2';
+  const tank1Label = tank1Cfg?.display_label || '储水槽 / 常温供水';
+  const tank2Label = tank2Cfg?.display_label || '加热水槽 / 恒温区';
   const isPumpOn = (deviceState?.pump_active ?? false) && !deviceState?.emergency_stop;
   const pumpDirection = deviceState?.pump_direction ?? 'FORWARD';
   const isForward = pumpDirection === 'FORWARD';
@@ -191,8 +199,8 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
               opacity="0.6"
             />
             {/* Titles */}
-            <text x="65" y="32" fill="#0f172a" fontSize="13" fontWeight="bold" textAnchor="middle">水槽 1 (Tank 1)</text>
-            <text x="65" y="48" fill="#0284c7" fontSize="10.5" fontWeight="500" textAnchor="middle">储水槽 / 常温供水</text>
+            <text x="65" y="32" fill="#0f172a" fontSize="13" fontWeight="bold" textAnchor="middle">{tank1Name}</text>
+            <text x="65" y="48" fill="#0284c7" fontSize="10.5" fontWeight="500" textAnchor="middle">{tank1Label}</text>
 
             {/* Temperature Sensor 1 Probe */}
             <g transform="translate(105, -25)">
@@ -277,8 +285,8 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
               opacity="0.6"
             />
             {/* Titles */}
-            <text x="65" y="32" fill="#0f172a" fontSize="13" fontWeight="bold" textAnchor="middle">水槽 2 (Tank 2)</text>
-            <text x="65" y="48" fill="#0284c7" fontSize="10.5" fontWeight="500" textAnchor="middle">加热水槽 / 恒温区</text>
+            <text x="65" y="32" fill="#0f172a" fontSize="13" fontWeight="bold" textAnchor="middle">{tank2Name}</text>
+            <text x="65" y="48" fill="#0284c7" fontSize="10.5" fontWeight="500" textAnchor="middle">{tank2Label}</text>
 
             {/* Heating Element inside Tank 2 */}
             <g transform="translate(25, 175)">

@@ -1,19 +1,24 @@
 import React, { useEffect, useState } from 'react';
-import { Activity, AlertOctagon, Cpu, Radio, ShieldAlert, Wifi, WifiOff } from 'lucide-react';
-import type { SystemStatus } from '../types';
+import { Activity, AlertOctagon, Cpu, Radio, RefreshCw, ShieldAlert, Wifi, WifiOff } from 'lucide-react';
+import type { SystemConfigResponse, SystemStatus } from '../types';
 
 interface HeaderProps {
   status: SystemStatus | null;
   wsConnected: boolean;
+  systemConfig?: SystemConfigResponse | null;
   onEmergencyStop: (stop: boolean) => void;
+  onReloadConfig?: () => Promise<void> | void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   status,
   wsConnected,
+  systemConfig,
   onEmergencyStop,
+  onReloadConfig,
 }) => {
   const [time, setTime] = useState<string>('');
+  const [isReloading, setIsReloading] = useState<boolean>(false);
 
   useEffect(() => {
     const updateTime = () => {
@@ -24,6 +29,16 @@ export const Header: React.FC<HeaderProps> = ({
     const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  const handleReloadClick = async () => {
+    if (!onReloadConfig || isReloading) return;
+    setIsReloading(true);
+    try {
+      await onReloadConfig();
+    } finally {
+      setTimeout(() => setIsReloading(false), 500);
+    }
+  };
 
   const isEmergency = status?.device_state.emergency_stop ?? false;
   const isTcpConnected = status?.tcp_client_connected ?? false;
@@ -40,15 +55,9 @@ export const Header: React.FC<HeaderProps> = ({
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-semibold tracking-tight text-gray-900">
-              单管路双水槽智能水循环监测系统
+              {systemConfig?.config?.system?.system_name || '单管路双水槽智能水循环监测系统'}
             </h1>
-            <span className="hidden sm:inline-flex px-2 py-0.5 rounded text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
-              SCADA v1.0
-            </span>
           </div>
-          <p className="text-xs text-gray-500 font-normal">
-            Single-Pipe Dual-Tank Water Circulation, Bidirectional Transfer & Auto-Control System
-          </p>
         </div>
       </div>
 
@@ -89,6 +98,20 @@ export const Header: React.FC<HeaderProps> = ({
           <Cpu className="w-3.5 h-3.5" />
           <span>模式: {autoMode ? '智能自控' : '手动干预'}</span>
         </div>
+
+        {/* Config Reload Icon Button (Single SVG Icon, Reload only) */}
+        {systemConfig && (
+          <button
+            type="button"
+            onClick={handleReloadClick}
+            disabled={isReloading}
+            className="inline-flex items-center justify-center p-2 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-blue-600 border border-slate-200 transition-all duration-200 shadow-2xs cursor-pointer active:scale-95 disabled:opacity-50"
+            title={`重新加载配置 (读取最新 config.json5)\n当前文件: ${systemConfig.config_file || 'config.json5'}`}
+            aria-label="重新加载配置 (config.json5)"
+          >
+            <RefreshCw className={`w-4 h-4 text-blue-600 ${isReloading ? 'animate-spin' : ''}`} />
+          </button>
+        )}
 
         {/* Alarm Count Badge */}
         {alarmCount > 0 && (

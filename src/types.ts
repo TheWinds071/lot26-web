@@ -166,3 +166,117 @@ export interface SystemStatus {
   tcp_client_connected: boolean;
   last_packet_time?: string;
 }
+
+export interface SystemConfigResponse {
+  status: string;
+  config_file: string | null;
+  config: {
+    system?: {
+      system_id?: string;
+      system_name?: string;
+      version?: string;
+      description?: string;
+      topology_type?: string;
+    };
+    communication_protocols?: {
+      tcp_socket?: {
+        server?: {
+          host?: string;
+          port?: number;
+          max_connections?: number;
+        };
+        client_defaults?: {
+          remote_host?: string;
+          remote_port?: number;
+        };
+      };
+      websocket?: {
+        endpoint?: string;
+        protocol?: string;
+      };
+      http_api?: {
+        host?: string;
+        port?: number;
+        api_prefix?: string;
+      };
+    };
+    storage_tank?: {
+      tank_id?: string;
+      name?: string;
+      display_label?: string;
+      physical_specs?: {
+        rated_capacity_liters?: number;
+        usable_capacity_liters?: number;
+        material?: string;
+      };
+      temperature_monitoring?: {
+        nominal_temperature_celsius?: number;
+        high_temp_alarm_threshold_celsius?: number;
+        unit?: string;
+      };
+      water_level_monitoring?: {
+        nominal_level_percentage?: number;
+        low_level_alarm_threshold?: number;
+        high_level_alarm_threshold?: number;
+        unit?: string;
+      };
+    };
+    heating_tank?: {
+      tank_id?: string;
+      name?: string;
+      display_label?: string;
+      physical_specs?: {
+        rated_capacity_liters?: number;
+        usable_capacity_liters?: number;
+        material?: string;
+      };
+      heating_module?: {
+        module_id?: string;
+        rated_power_watts?: number;
+        temperature_control_thresholds?: {
+          target_temperature_celsius?: number;
+          min_trigger_temperature_celsius?: number;
+          max_temperature_limit_celsius?: number;
+          hysteresis_celsius?: number;
+        };
+        safety_interlocks?: {
+          prevent_dry_run_enabled?: boolean;
+          min_required_flow_lpm?: number;
+          min_safe_water_level_percentage?: number;
+        };
+      };
+      temperature_monitoring?: {
+        nominal_temperature_celsius?: number;
+        high_temp_alarm_threshold_celsius?: number;
+        unit?: string;
+      };
+      water_level_monitoring?: {
+        nominal_level_percentage?: number;
+        low_level_alarm_threshold?: number;
+        high_level_alarm_threshold?: number;
+        unit?: string;
+      };
+    };
+    single_pipeline_network?: {
+      pipe_specs?: {
+        nominal_diameter?: string;
+        max_allowable_working_pressure_pa?: number;
+      };
+      bidirectional_pump?: {
+        pump_name?: string;
+        max_flow_rate_lpm?: number;
+      };
+      pressure_sensor?: {
+        overpressure_alarm_threshold_pa?: number;
+      };
+      flow_sensor?: {
+        target_flow_rate_lpm?: number;
+        min_flow_dry_run_threshold_lpm?: number;
+      };
+    };
+    system_safety_thresholds?: {
+      max_temperature_difference_celsius?: number;
+    };
+    [key: string]: any;
+  };
+}

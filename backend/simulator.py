@@ -1,9 +1,42 @@
 import argparse
 import asyncio
 import json
+import os
+from pathlib import Path
 import random
 import sys
 import time
+
+try:
+    import json5
+except ImportError:
+    json5 = None
+
+
+def load_config_defaults():
+    """Attempts to read defaults from config.json5."""
+    candidates = [
+        Path("config.json5"),
+        Path("../config.json5"),
+        Path(__file__).resolve().parent.parent / "config.json5",
+    ]
+    for p in candidates:
+        if p.is_file() and json5:
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    return json5.load(f)
+            except Exception:
+                pass
+    return {}
+
+
+_CFG = load_config_defaults()
+_TCP_CFG = _CFG.get("communication_protocols", {}).get("tcp_socket", {})
+_CLIENT_DEFAULTS = _TCP_CFG.get("client_defaults", {})
+_TELEMETRY_CFG = _TCP_CFG.get("telemetry_uplink", {})
+_TANK1_CFG = _CFG.get("storage_tank", {})
+_TANK2_CFG = _CFG.get("heating_tank", {})
+_PIPE_CFG = _CFG.get("single_pipeline_network", {})
 
 
 class SinglePipeDualTankSimulator:
@@ -11,21 +44,21 @@ class SinglePipeDualTankSimulator:
 
     def __init__(
         self,
-        host: str = "127.0.0.1",
-        port: int = 8888,
-        interval: float = 1.0,
-        max_flow: float = 0.4,
+        host: str = _CLIENT_DEFAULTS.get("remote_host", "127.0.0.1"),
+        port: int = int(_CLIENT_DEFAULTS.get("remote_port", 8888)),
+        interval: float = float(_TELEMETRY_CFG.get("sampling_rate_hz", 1.0)),
+        max_flow: float = float(_PIPE_CFG.get("bidirectional_pump", {}).get("max_flow_rate_lpm", 0.4)),
     ):
         self.host = host
         self.port = port
         self.interval = interval
         self.max_flow = max_flow
 
-        # Physical state variables for 2 water tanks connected by 1 single pipe
-        self.temp_tank1 = 48.0   # Tank 1 Temp (°C)
-        self.temp_tank2 = 32.0   # Tank 2 Temp (°C)
-        self.water_level_tank1 = 75.0  # Tank 1 level (%)
-        self.water_level_tank2 = 65.0  # Tank 2 level (%)
+        # Physical state variables for 2 water tanks connected by 1 single pipe (from config.json5)
+        self.temp_tank1 = float(_TANK1_CFG.get("temperature_monitoring", {}).get("nominal_temperature_celsius", 48.0))
+        self.temp_tank2 = float(_TANK2_CFG.get("temperature_monitoring", {}).get("nominal_temperature_celsius", 32.0))
+        self.water_level_tank1 = float(_TANK1_CFG.get("water_level_monitoring", {}).get("nominal_level_percentage", 75.0))
+        self.water_level_tank2 = float(_TANK2_CFG.get("water_level_monitoring", {}).get("nominal_level_percentage", 65.0))
 
         self.ambient_temp = 22.0  # Ambient room temp (°C)
         self.pressure = 4000.0    # Single pipe pressure (Pa, idle)

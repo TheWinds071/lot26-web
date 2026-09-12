@@ -1,18 +1,26 @@
 import React from 'react';
 import { Flame, Gauge, RotateCw, Thermometer, Waves } from 'lucide-react';
-import type { DeviceState, TelemetryData, ThresholdConfig } from '../types';
+import type { DeviceState, SystemConfigResponse, TelemetryData, ThresholdConfig } from '../types';
 
 interface TelemetryCardsProps {
   telemetry?: TelemetryData;
   deviceState?: DeviceState;
   thresholds?: ThresholdConfig;
+  systemConfig?: SystemConfigResponse | null;
 }
 
 export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
   telemetry,
   deviceState,
   thresholds,
+  systemConfig,
 }) => {
+  const tank1Cfg = systemConfig?.config?.storage_tank;
+  const tank2Cfg = systemConfig?.config?.heating_tank;
+  const tank1Name = tank1Cfg?.name || '水槽 1';
+  const tank2Name = tank2Cfg?.name || '水槽 2';
+  const tank1Label = tank1Cfg?.display_label || '储水槽';
+  const tank2Label = tank2Cfg?.display_label || '加热槽';
   const t1 = telemetry?.temp_tank1 ?? telemetry?.temperature ?? 0;
   const t2 = telemetry?.temp_tank2 ?? telemetry?.temperature ?? 0;
   const press = telemetry?.pressure ?? 0;
@@ -107,7 +115,9 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
               {t1StatusText}
             </span>
           </div>
-          <span className="text-xs font-medium text-gray-500 block">水槽 1 水温 (Tank 1 / 储水槽)</span>
+          <span className="text-xs font-medium text-gray-500 block">
+            {tank1Name} 水温 ({tank1Label})
+          </span>
           <div className="flex items-baseline gap-1.5 mt-1 mb-3">
             <span className="text-3xl font-bold tracking-tight text-gray-900 font-mono">
               {t1.toFixed(1)}
@@ -141,7 +151,9 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
               {t2StatusText}
             </span>
           </div>
-          <span className="text-xs font-medium text-gray-500 block">水槽 2 水温 (Tank 2 / 加热主槽)</span>
+          <span className="text-xs font-medium text-gray-500 block">
+            {tank2Name} 水温 ({tank2Label})
+          </span>
           <div className="flex items-baseline gap-1.5 mt-1 mb-3">
             <span className="text-3xl font-bold tracking-tight text-gray-900 font-mono">
               {t2.toFixed(1)}

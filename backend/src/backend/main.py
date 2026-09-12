@@ -18,6 +18,7 @@ from backend.models import (
     TelemetryData,
     ThresholdConfig,
 )
+from backend.config_loader import config_loader
 from backend.state_manager import state_manager
 from backend.tcp_server import TCPServer
 
@@ -28,8 +29,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger("main")
 
-TCP_PORT = int(os.environ.get("TCP_PORT", "8888"))
-TCP_HOST = os.environ.get("TCP_HOST", "0.0.0.0")
+# Load TCP configuration from config.json5 (with ENV override support)
+tcp_cfg = config_loader.tcp_server_config
+TCP_PORT = tcp_cfg["port"]
+TCP_HOST = tcp_cfg["host"]
 
 tcp_server = TCPServer(host=TCP_HOST, port=TCP_PORT)
 active_websockets: List[WebSocket] = []
@@ -235,6 +238,27 @@ async def delete_alarm_rule(rule_id: str):
     if not deleted:
         raise HTTPException(status_code=404, detail="Alarm rule not found")
     return {"status": "success", "message": f"Alarm rule {rule_id} deleted", "id": rule_id}
+
+
+@app.get("/api/config/system")
+async def get_system_config():
+    """Returns the parsed configuration loaded from config.json5."""
+    return {
+        "status": "ok",
+        "config_file": str(config_loader.config_path) if config_loader.config_path else None,
+        "config": config_loader.raw_config,
+    }
+
+
+@app.post("/api/config/reload")
+async def reload_system_config():
+    """Reloads config.json5 from disk dynamically."""
+    raw = config_loader.load_config()
+    return {
+        "status": "success",
+        "message": f"Successfully reloaded configuration from {config_loader.config_path}",
+        "config": raw,
+    }
 
 
 @app.get("/api/config/thresholds", response_model=ThresholdConfig)

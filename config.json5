@@ -1,0 +1,409 @@
+{
+  // =========================================================================
+  // 单管路双水槽智能水循环监测与自动控制系统 - 工业配置文件 (JSON5)
+  // Single-Pipe Bidirectional Dual-Tank SCADA System Configuration
+  // =========================================================================
+
+  // -------------------------------------------------------------------------
+  // 1. 系统元数据与基本信息 (System Metadata)
+  // -------------------------------------------------------------------------
+  system: {
+    system_id: 'DUAL_TANK_SCADA_SYSTEM',
+    system_name: '智能水循环监测系统',
+    version: '1.0.0',
+    description: '',
+    topology_type: 'single_pipe_bidirectional_dual_tank', // 单管路双向连接拓扑
+  },
+
+  // -------------------------------------------------------------------------
+  // 2. 通信协议配置 (Communication Protocols Configuration)
+  // -------------------------------------------------------------------------
+  communication_protocols: {
+    // 2.1 TCP Socket 现场总线/PLC 通信服务协议
+    tcp_socket: {
+      server: {
+        host: '0.0.0.0', // 服务端监听地址 (0.0.0.0 允许外部现场PLC/客户端接入)
+        port: 8888, // 默认监听端口 (支持通过环境变量 TCP_PORT 动态覆盖)
+        env_var_override: 'TCP_PORT', // 绑定的环境变量名
+        max_connections: 100, // 最大并发连接客户端数
+        backlog: 128, // TCP 连接排队队列长度
+      },
+      client_defaults: {
+        remote_host: '127.0.0.1', // 模拟器/测试客户端连接的目标主机地址
+        remote_port: 8888, // 模拟器/测试客户端连接的目标端口
+        reconnect_interval_seconds: 2.0, // 客户端断线自动重试重连周期 (秒)
+      },
+      framing: {
+        delimiter: '\n', // 报文分包定界符：换行符 (LF)
+        encoding: 'utf-8', // 数据传输字符集编码
+        buffer_size_bytes: 4096, // 单次 Socket 接收缓冲区大小 (字节)
+      },
+      telemetry_uplink: {
+        default_device_id: 'DUAL_TANK_STATION_01', // 默认设备站点唯一标识
+        sampling_rate_hz: 1.0, // 传感器数据标准上报采样频率 (1.0 Hz = 1秒/次)
+        timeout_seconds: 5.0, // 通通信心跳/接收超时阈值 (超过该时间判定离线)
+        // 支持的上行报文格式规范
+        supported_formats: [
+          {
+            format_name: 'JSON_PAYLOAD', // 格式 A：标准 JSON 报文 (推荐)
+            description: '标准键值对格式，包含完整双槽温度、单管水压流速及液位',
+            example: {
+              device_id: 'DUAL_TANK_STATION_01', // 设备唯一编码
+              temp_tank1: 48.0, // 水槽1当前水温 (°C)
+              temp_tank2: 32.0, // 水槽2当前水温 (°C)
+              temperature: 40.0, // 综合平均水温 (°C，可选，未传时自动计算)
+              pressure: 35000.0, // 单管路流体压力 (Pa)
+              flow_rate: 0.35, // 单管路水流流速 (L/min)
+              water_level_tank1: 75.0, // 水槽1当前液位百分比 (%)
+              water_level_tank2: 65.0, // 水槽2当前液位百分比 (%)
+              timestamp: '2026-09-12T10:00:00', // 采集时间戳 (ISO 8601，可选)
+            },
+          },
+          {
+            format_name: 'CSV_4_FIELDS', // 格式 B：4 字段紧凑 CSV 格式
+            description: '以逗号分隔的数据帧：水槽1水温, 水槽2水温, 管道水压, 管道流速',
+            example: '48.0, 32.0, 35000.0, 0.35',
+          },
+          {
+            format_name: 'CSV_3_FIELDS', // 格式 C：3 字段向后兼容 CSV 格式
+            description: '以逗号分隔的数据帧：平均水温, 管道水压, 管道流速 (双槽温度均赋值为该水温)',
+            example: '40.0, 35000.0, 0.35',
+          },
+        ],
+      },
+      downlink_control: {
+        // 每帧遥测接收后服务端自动应答的 ACK 下行状态包
+        ack_response_template: {
+          status: 'ACK', // 确认标识：ACK 或 ERROR
+          cmd: 'HEATER_CONTROL', // 执行器控制主令类型
+          heater_active: false, // 加热模块启停状态 (true: 运行, false: 停止)
+          heater_power: 0, // 加热模块输出功率百分比 (0 - 100%)
+          pump_active: false, // 双向水泵启停状态 (true: 运行, false: 停止)
+          pump_speed: 60, // 水泵转速百分比 (0 - 100%)
+          pump_direction: 'FORWARD', // 水泵流动方向: FORWARD (水槽1->2) 或 REVERSE (水槽2->1)
+          emergency_stop: false, // 紧急急停锁定状态
+          timestamp: 'ISO_8601_TIMESTAMP', // 下发时间戳
+        },
+        // 独立控制下行命令字典
+        control_commands: {
+          HEATER_CONTROL: {
+            description: '加热器开关与输出功率调节指令',
+            parameters: {
+              cmd: 'HEATER_CONTROL',
+              heater_active: 'boolean (true: 启动加热, false: 关闭加热)',
+              heater_power: 'integer (0-100, 功率占空比百分比)',
+            },
+          },
+          PUMP_CONTROL: {
+            description: '双向水泵启停、转速与正反转流向控制指令',
+            parameters: {
+              cmd: 'PUMP_CONTROL',
+              pump_active: 'boolean (true: 启泵, false: 停泵)',
+              pump_speed: 'integer (0-100, 转速百分比)',
+              pump_direction: "string ('FORWARD': 水槽1➔水槽2, 'REVERSE': 水槽2➔水槽1)",
+            },
+          },
+          EMERGENCY_STOP: {
+            description: '系统紧急急停强制切断指令',
+            parameters: {
+              cmd: 'EMERGENCY_STOP',
+              emergency_stop: 'boolean (true: 强制锁定急停并切断所有输出, false: 解除急停)',
+            },
+          },
+        },
+      },
+    },
+
+    // 2.2 WebSocket 实时流与 SCADA 数字孪生通信协议
+    websocket: {
+      endpoint: '/ws/telemetry', // WebSocket 服务端连接端点
+      protocol: 'RFC 6455', // 标准 WebSocket 协议
+      push_events: [
+        'init', // 首帧握手全量系统状态快照与历史时序列表
+        'telemetry', // 实时遥测数据帧广播 (含双槽水温、水压、流速、设备状态)
+        'device_state_updated', // 水泵正反转、转速、加热器功率变更通知
+        'mode_changed', // 自动控制 / 手动控制运行模式变更通知
+        'thresholds_updated', // 自控控温与保护阈值修改广播
+        'alarm', // 触发新告警事件广播
+        'alarm_resolved', // 告警自愈与解除事件广播
+      ],
+      client_actions: [
+        'set_mode', // 前端切换自动/手动模式: { action: 'set_mode', auto_mode: true }
+        'set_pump', // 前端控制水泵: { action: 'set_pump', active: true, speed: 80, direction: 'FORWARD' }
+        'set_heater', // 前端控制加热器: { action: 'set_heater', active: true, power: 100 }
+        'set_emergency_stop', // 触发/解除急停: { action: 'set_emergency_stop', emergency_stop: true }
+        'update_thresholds', // 更新控温与安全阈值: { action: 'update_thresholds', thresholds: { ... } }
+      ],
+      heartbeat_interval_seconds: 30.0, // 前端保活心跳检测周期
+    },
+
+    // 2.3 RESTful HTTP Web API 协议
+    http_api: {
+      host: '0.0.0.0', // FastAPI 服务监听主机
+      port: 8000, // Web API 端口
+      api_prefix: '/api', // 路由统一前缀
+      cors: {
+        allow_origins: ['*'], // 允许跨域来源
+        allow_methods: ['GET', 'POST', 'PUT', 'DELETE'],
+        allow_headers: ['*'],
+      },
+    },
+  },
+
+  // -------------------------------------------------------------------------
+  // 3. 储水槽配置 (Storage Tank Configuration - Tank 1)
+  // -------------------------------------------------------------------------
+  storage_tank: {
+    tank_id: 'tank_1', // 水槽在系统中的程序索引标识
+    device_id: 'TANK_01', // 硬件设备与测点编号
+    name: '水槽 1', // 显示名称
+    display_label: '储水槽 / 常温供水主槽', // 功能标签
+    role: 'storage_and_supply', // 功能角色：常温储水、回水沉淀与正向供水主槽
+
+    // 3.1 物理结构与容器参数
+    physical_specs: {
+      rated_capacity_liters: 100.0, // 额定设计容积 (升)
+      usable_capacity_liters: 90.0, // 最大安全有效储水容积 (升)
+      material: 'SUS304 食品级不锈钢 / 高透明工业加厚亚克力', // 槽体材质
+      dimensions_mm: {
+        width_or_diameter: 400.0, // 外径或横向宽度 (mm)
+        height: 800.0, // 水槽整体物理高度 (mm)
+        wall_thickness: 4.0, // 槽壁厚度 (mm)
+      },
+      thermal_insulation: {
+        enabled: false, // 常温储水槽无主动发泡保温层
+        insulation_material: 'none',
+      },
+    },
+
+    // 3.2 水温监测与温度传感器配置 (Sensor 1)
+    temperature_monitoring: {
+      sensor_id: 'temp_sensor_1', // 传感器测点编号
+      telemetry_key: 'temp_tank1', // 报文中对应的字段名
+      sensor_name: '温度传感器 1 (水槽 1 测温探头)',
+      sensor_type: 'PT100 铂热电阻 (Class A 高精度探针)',
+      installation_position: '水槽中部偏下浸入式测温套管 (距槽底 200mm)',
+      measurement_range_celsius: {
+        min: 0.0, // 传感器测温下限 (°C)
+        max: 100.0, // 传感器测温上限 (°C)
+      },
+      nominal_temperature_celsius: 48.0, // 标称常温/初始基准水温 (°C)
+      high_temp_alarm_threshold_celsius: 75.0, // 水槽超温告警停机安全阈值 (°C)
+      unit: '°C',
+    },
+
+    // 3.3 液位监测与液位传感器配置
+    water_level_monitoring: {
+      sensor_id: 'level_sensor_1', // 传感器测点编号
+      telemetry_key: 'water_level_tank1', // 报文中对应的字段名
+      sensor_name: '水槽 1 投入式静压液位传感器',
+      sensor_type: '投入式压阻压力液位变送器',
+      measurement_range_percentage: {
+        min: 0.0, // 0% 对应空槽底面
+        max: 100.0, // 100% 对应溢流口标高高度
+      },
+      nominal_level_percentage: 75.0, // 标称稳态工作运行液位 (%)
+      low_level_alarm_threshold: 20.0, // 低液位告警下限 (%)：低于此值触发缺水告警
+      high_level_alarm_threshold: 90.0, // 高液位溢流告警上限 (%)：高于此值触发溢水风险告警
+      unit: '%',
+    },
+
+    // 3.4 单管道循环接口
+    pipe_connection: {
+      port_description: '单管道循环共用出/入水口',
+      flange_spec: 'DN20 (G 3/4" 螺纹法兰密封接口)',
+      flow_modes: [
+        '正转模式 (FORWARD): 作为供水输出端，水体经由单管路输送至水槽2',
+        '反转模式 (REVERSE): 作为回水接收端，接收来自水槽2回流的热水',
+      ],
+    },
+  },
+
+  // -------------------------------------------------------------------------
+  // 4. 加热水槽配置 (Heating Tank Configuration - Tank 2)
+  // -------------------------------------------------------------------------
+  heating_tank: {
+    tank_id: 'tank_2', // 水槽在系统中的程序索引标识
+    device_id: 'TANK_02', // 硬件设备与测点编号
+    name: '水槽 2', // 显示名称
+    display_label: '加热水槽 / 工艺受水恒温区', // 功能标签
+    role: 'heating_and_process', // 功能角色：工艺受水、电加热升温与恒温循环槽
+
+    // 4.1 物理结构与容器参数
+    physical_specs: {
+      rated_capacity_liters: 100.0, // 额定设计容积 (升)
+      usable_capacity_liters: 90.0, // 最大安全有效储水容积 (升)
+      material: 'SUS304 食品级双层不锈钢', // 槽体材质
+      dimensions_mm: {
+        width_or_diameter: 400.0, // 外径或横向宽度 (mm)
+        height: 800.0, // 水槽整体物理高度 (mm)
+        wall_thickness: 5.0, // 槽壁厚度 (含耐热保温层)
+      },
+      thermal_insulation: {
+        enabled: true, // 加热水槽配置高温聚氨酯保温外壳
+        insulation_material: '高密度硅酸铝发泡保温层',
+        thickness_mm: 25.0,
+      },
+    },
+
+    // 4.2 电加热模块核心配置 (Heating Element System)
+    heating_module: {
+      module_id: 'heater_tank2_01', // 加热模组唯一编号
+      device_name: '水槽 2 浸入式辅助电加热总成',
+      element_type: 'PTC 陶瓷半导体 / 不锈钢耐腐蚀电热管组',
+      installation_position: '水槽 2 底部进出水循环导流槽内 (防涡流设计)',
+      rated_power_watts: 2000.0, // 额定额定总功率: 2000W (2.0 kW)
+      voltage_supply: 'AC 220V ± 10% / 50Hz 单相交流',
+      control_actuator_type: '无触点固态继电器 (SSR) + PWM 占空比脉冲调功',
+      power_regulation_range: {
+        min_percentage: 0, // 最小输出功率: 0% (完全断开)
+        max_percentage: 100, // 最大输出功率: 100% (全功率运行)
+        step_percentage: 1, // 调控步长百分比
+      },
+      // 自控温控策略与阈值参数
+      temperature_control_thresholds: {
+        target_temperature_celsius: 55.0, // 恒温控制目标水温 T_target (°C)
+        min_trigger_temperature_celsius: 45.0, // 自动启动加热温度下限 T_min (°C，低于此温度强制启动加热)
+        max_temperature_limit_celsius: 75.0, // 超温强制切断上限 T_max (°C，到达此温度立即断开加热防沸腾)
+        hysteresis_celsius: 1.0, // 滞后回差区间 (°C，防止水温在临界点附近频繁震荡启停加热)
+      },
+      // 加热安全保护联锁机制 (Hardware & Software Safety Interlocks)
+      safety_interlocks: {
+        prevent_dry_run_enabled: true, // 启用防干烧联锁保护
+        min_required_flow_lpm: 0.05, // 加热工作最低必须流速 (低于 0.05 L/min 联锁切断加热，防止干烧)
+        min_safe_water_level_percentage: 20.0, // 加热允许最低工作液位 (低于 20% 禁止通电加热)
+        overpressure_trip_cutout: true, // 管道超压即刻联动切断加热
+        emergency_stop_trip_cutout: true, // 外部急停即刻毫秒级切断加热
+      },
+    },
+
+    // 4.3 水温监测与温度传感器配置 (Sensor 2)
+    temperature_monitoring: {
+      sensor_id: 'temp_sensor_2', // 传感器测点编号
+      telemetry_key: 'temp_tank2', // 报文中对应的字段名
+      sensor_name: '温度传感器 2 (加热水槽测温探头)',
+      sensor_type: 'PT100 铂热电阻 (Class A 高精度探针)',
+      installation_position: '水槽 2 加热模块上方水流扰动充分混合区',
+      measurement_range_celsius: {
+        min: 0.0, // 传感器测温下限 (°C)
+        max: 100.0, // 传感器测温上限 (°C)
+      },
+      nominal_temperature_celsius: 32.0, // 标称初始受水水温 (°C)
+      high_temp_alarm_threshold_celsius: 75.0, // 超温切断与告警阈值 (°C)
+      unit: '°C',
+    },
+
+    // 4.4 液位监测与液位传感器配置
+    water_level_monitoring: {
+      sensor_id: 'level_sensor_2', // 传感器测点编号
+      telemetry_key: 'water_level_tank2', // 报文中对应的字段名
+      sensor_name: '水槽 2 投入式静压液位传感器',
+      sensor_type: '投入式压阻压力液位变送器',
+      measurement_range_percentage: {
+        min: 0.0,
+        max: 100.0,
+      },
+      nominal_level_percentage: 65.0, // 标称稳态工作运行液位 (%)
+      low_level_alarm_threshold: 20.0, // 低液位告警下限 (%)
+      high_level_alarm_threshold: 90.0, // 高液位溢流告警上限 (%)
+      unit: '%',
+    },
+
+    // 4.5 单管道循环接口
+    pipe_connection: {
+      port_description: '单管道循环共用进/出水口',
+      flange_spec: 'DN20 (G 3/4" 螺纹法兰密封接口)',
+      flow_modes: [
+        '正转模式 (FORWARD): 作为受水槽，接收来自水槽1的冷水并加热',
+        '反转模式 (REVERSE): 作为供水槽，将加热后的高温热水反向泵回水槽1',
+      ],
+    },
+  },
+
+  // -------------------------------------------------------------------------
+  // 5. 单管路管道与双向水泵系统配置 (Connecting Single Pipe & Pump Network)
+  // -------------------------------------------------------------------------
+  single_pipeline_network: {
+    network_description: '连接水槽1与水槽2之间的唯一单管道双向流体回路',
+    // 5.1 管道物理规格
+    pipe_specs: {
+      nominal_diameter: 'DN20', // 公称管径 (内径约 20mm)
+      pipe_material: 'SUS304 洁净卫生级无缝不锈钢光亮管',
+      length_meters: 1.2, // 水槽间单管连接物理长度 (米)
+      max_allowable_working_pressure_pa: 1600000.0, // 管道设计最高承压 (1.6 MPa)
+    },
+
+    // 5.2 可正反转双向循环水泵配置
+    bidirectional_pump: {
+      pump_id: 'circulation_pump_01',
+      pump_name: '单管路双向直流变频增压水泵',
+      motor_type: 'BLDC 无刷直流变频电机 + 换向换相驱动器',
+      max_flow_rate_lpm: 0.40, // 实验工况标称微流量最大值 (0.40 L/min)
+      speed_control_range: {
+        min_speed_percentage: 0, // 0% 停转
+        max_speed_percentage: 100, // 100% 满转
+        default_speed_percentage: 60, // 默认工作转速 60%
+      },
+      directions: {
+        FORWARD: {
+          code: 'FORWARD',
+          flow_direction: 'Tank 1 ➔ Tank 2',
+          description: '正转流向：水泵由水槽1吸水加压输送至水槽2加热',
+        },
+        REVERSE: {
+          code: 'REVERSE',
+          flow_direction: 'Tank 2 ➔ Tank 1',
+          description: '反转流向：水泵反向抽取水槽2的高温热水泵回水槽1进行热量循环',
+        },
+      },
+    },
+
+    // 5.3 管道压力传感器配置
+    pressure_sensor: {
+      sensor_id: 'pipe_pressure_sensor_01',
+      telemetry_key: 'pressure',
+      sensor_name: '单管路高频数字流体压力变送器',
+      installation_location: '双向水泵前置流体测量点 (单管路中间段)',
+      measurement_range_pa: {
+        min: 0.0,
+        max: 1000000.0, // 0 ~ 1,000,000 Pa (0 ~ 1.0 MPa)
+      },
+      safe_working_range_pa: {
+        min: 10000.0, // 管道最小正常流动水压 (10 kPa)
+        max: 800000.0, // 管道最高安全耐受水压 (800 kPa / 0.8 MPa)
+      },
+      overpressure_alarm_threshold_pa: 800000.0, // 管道超压 CRITICAL 告警阈值 (超限立即停泵停加热)
+      unit: 'Pa',
+    },
+
+    // 5.4 双向管道流量传感器配置
+    flow_sensor: {
+      sensor_id: 'pipe_flow_sensor_01',
+      telemetry_key: 'flow_rate',
+      sensor_name: '双向高灵敏度霍尔流速计',
+      installation_location: '单管路后置水流出口测量点',
+      measurement_range_lpm: {
+        min: 0.0,
+        max: 1.0, // 适应微流量监测量程 0 ~ 1.0 L/min
+      },
+      target_flow_rate_lpm: 0.30, // 目标调谐流速 (0.30 L/min)
+      min_flow_dry_run_threshold_lpm: 0.05, // 低流量/防干烧告警阈值 (低于 0.05 L/min 且水泵运行时切断加热)
+      unit: 'L/min',
+    },
+  },
+
+  // -------------------------------------------------------------------------
+  // 6. 系统全局自控策略与安全保护阈值 (Global Control & Safety Thresholds)
+  // -------------------------------------------------------------------------
+  system_safety_thresholds: {
+    // 双水槽温差容许范围
+    max_temperature_difference_celsius: 15.0, // 水槽1与水槽2的最大允许温差 ΔT_max (°C，超限触发 WARNING)
+    // 紧急急停响应动作策略
+    emergency_stop_action: {
+      pump_action: 'FORCE_STOP', // 强制停泵
+      heater_action: 'FORCE_CUTOFF', // 强制断开加热且锁定功率为 0%
+      auto_mode_action: 'DISABLE_AUTO', // 退出自动模式
+      interlock_level: 'CRITICAL', // 最高级别安全联锁
+    },
+  },
+}

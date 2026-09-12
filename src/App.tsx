@@ -5,10 +5,11 @@ import { PipelineTopology } from './components/PipelineTopology';
 import { RealtimeCharts } from './components/RealtimeCharts';
 import { ControlPanel } from './components/ControlPanel';
 import { AlarmLogs } from './components/AlarmLogs';
-import type { AlarmRule, DeviceState, SystemStatus, TelemetryData, ThresholdConfig } from './types';
+import type { AlarmRule, DeviceState, SystemConfigResponse, SystemStatus, TelemetryData, ThresholdConfig } from './types';
 
 export const App: React.FC = () => {
   const [status, setStatus] = useState<SystemStatus | null>(null);
+  const [systemConfig, setSystemConfig] = useState<SystemConfigResponse | null>(null);
   const [alarmRules, setAlarmRules] = useState<AlarmRule[]>([]);
   const [history, setHistory] = useState<TelemetryData[]>([]);
   const [wsConnected, setWsConnected] = useState<boolean>(false);
@@ -146,6 +147,11 @@ export const App: React.FC = () => {
       if (rulesRes.ok) {
         const rulesData: AlarmRule[] = await rulesRes.json();
         setAlarmRules(rulesData);
+      }
+      const configRes = await fetch('/api/config/system');
+      if (configRes.ok) {
+        const cfgData: SystemConfigResponse = await configRes.json();
+        setSystemConfig(cfgData);
       }
     } catch {
       // Backend maybe starting up
@@ -318,6 +324,23 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleReloadConfig = async () => {
+    try {
+      const res = await fetch('/api/config/reload', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        setSystemConfig({
+          status: 'ok',
+          config_file: systemConfig?.config_file || 'config.json5',
+          config: data.config,
+        });
+      }
+    } catch (e) {
+      console.error('Failed to reload config:', e);
+      throw e;
+    }
+  };
+
   const currentTelemetry = historicalFrame || status?.telemetry || undefined;
 
   return (
@@ -327,7 +350,9 @@ export const App: React.FC = () => {
         <Header
           status={status}
           wsConnected={wsConnected}
+          systemConfig={systemConfig}
           onEmergencyStop={handleEmergencyStop}
+          onReloadConfig={handleReloadConfig}
         />
 
         {/* 2. Key Telemetry Metric Cards */}
@@ -335,12 +360,14 @@ export const App: React.FC = () => {
           telemetry={currentTelemetry}
           deviceState={status?.device_state}
           thresholds={status?.thresholds}
+          systemConfig={systemConfig}
         />
 
         {/* 3. Single-Pipe Bidirectional Digital Twin Topology */}
         <PipelineTopology
           telemetry={currentTelemetry}
           deviceState={status?.device_state}
+          systemConfig={systemConfig}
         />
 
         {/* 4. Multi-Channel Trend Curves with Draggable Historical Timeline */}

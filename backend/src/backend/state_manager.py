@@ -6,6 +6,7 @@ from collections import deque
 from datetime import datetime
 from typing import Callable, Deque, List, Optional, Set
 
+from backend.config_loader import config_loader
 from backend.database import DatabaseManager, db_manager
 from backend.models import (
     AlarmEvent,
@@ -426,7 +427,7 @@ class StateManager:
         return action_taken
 
     def _load_thresholds(self) -> ThresholdConfig:
-        """Loads persisted thresholds from SQLite database if available, else uses defaults."""
+        """Loads persisted thresholds from SQLite database if available, else uses defaults from config.json5."""
         try:
             val = self.db.get_config("thresholds")
             if val:
@@ -436,7 +437,9 @@ class StateManager:
                 return loaded
         except Exception as e:
             logger.error(f"[StateManager] Failed to load persistent thresholds: {e}")
-        return ThresholdConfig()
+        initial = config_loader.get_initial_thresholds()
+        logger.info(f"[StateManager] Initialized thresholds from config.json5: {initial.model_dump()}")
+        return initial
 
     def update_thresholds(self, config: ThresholdConfig) -> ThresholdConfig:
         self.thresholds = config

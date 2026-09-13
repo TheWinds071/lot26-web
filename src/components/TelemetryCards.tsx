@@ -1,5 +1,5 @@
 import React from 'react';
-import { Flame, Gauge, RotateCw, Thermometer, Waves } from 'lucide-react';
+import { Droplets, Flame, Gauge, RotateCw, Thermometer, Waves } from 'lucide-react';
 import type { DeviceState, SystemConfigResponse, TelemetryData, ThresholdConfig } from '../types';
 
 interface TelemetryCardsProps {
@@ -34,6 +34,10 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
 
   const pressMax = thresholds?.pressure_max ?? 0.8;
   const flowMin = thresholds?.flow_rate_min ?? 5.0;
+
+  const targetVolume = thresholds?.target_volume ?? 10.0;
+  const accumulatedVolume = deviceState?.accumulated_volume ?? telemetry?.total_volume ?? 0;
+  const isTargetReached = deviceState?.target_volume_reached ?? false;
 
   const pumpDirection = deviceState?.pump_direction ?? 'FORWARD';
   const isPumpActive = deviceState?.pump_active ?? false;
@@ -88,9 +92,11 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
     ? "bg-emerald-50 text-emerald-700 border-emerald-200"
     : "bg-slate-100 text-slate-700 border-slate-200";
 
-  // 自适应防干烧阈值判断（若设置阈值大于 1.0 但当前系统为 0~0.4 微流量，按微流量安全下限 0.02 兼容）
   const effectiveFlowMin = flowMin > 1.0 && flow <= 1.0 ? 0.02 : flowMin;
-  if (isPumpActive && flow < effectiveFlowMin) {
+  if (isTargetReached) {
+    flowStatusText = "定量达标已停泵";
+    flowStatusClass = "bg-cyan-50 text-cyan-800 border-cyan-300 font-medium";
+  } else if (isPumpActive && flow < effectiveFlowMin) {
     flowStatusText = "流量过低 (防干烧)";
     flowStatusClass = "bg-rose-50 text-rose-700 border-rose-200";
   }
@@ -226,11 +232,19 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
             </span>
           </div>
           <span className="text-xs font-medium text-gray-500 block">管道双向流量 (Flow Rate)</span>
-          <div className="flex items-baseline gap-1.5 mt-1 mb-2">
-            <span className="text-3xl font-bold tracking-tight text-gray-900 font-mono">
-              {flow.toFixed(2)}
-            </span>
-            <span className="text-sm font-medium text-gray-500">L/min</span>
+          <div className="flex items-baseline justify-between mt-1 mb-2">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-3xl font-bold tracking-tight text-gray-900 font-mono">
+                {flow.toFixed(2)}
+              </span>
+              <span className="text-sm font-medium text-gray-500">L/min</span>
+            </div>
+            <div className="flex items-center gap-1 text-xs text-cyan-700 bg-cyan-50 px-2 py-0.5 rounded border border-cyan-200">
+              <Droplets className="w-3 h-3" />
+              <span className="font-mono font-semibold">{accumulatedVolume.toFixed(2)}</span>
+              <span className="text-gray-400">/</span>
+              <span className="font-mono text-gray-600">{targetVolume.toFixed(1)}L</span>
+            </div>
           </div>
         </div>
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeftRight, Waves } from 'lucide-react';
+import { ArrowLeftRight, Droplets, Waves } from 'lucide-react';
 import type { DeviceState, SystemConfigResponse, TelemetryData } from '../types';
 
 interface PipelineTopologyProps {
@@ -30,6 +30,8 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
   const t2 = telemetry?.temp_tank2 ?? telemetry?.temperature ?? 0;
   const press = telemetry?.pressure ?? 0;
   const flow = telemetry?.flow_rate ?? 0;
+  const accumulatedVol = deviceState?.accumulated_volume ?? telemetry?.total_volume ?? 0;
+  const isTargetReached = deviceState?.target_volume_reached ?? false;
 
   const lvl1 = telemetry?.water_level_tank1 ?? 75.0;
   const lvl2 = telemetry?.water_level_tank2 ?? 65.0;
@@ -76,6 +78,19 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
                 ? `正转流向: 水槽1 ➔ 水槽2 (${flow.toFixed(2)} L/min)`
                 : `反转流向: 水槽2 ➔ 水槽1 (${flow.toFixed(2)} L/min)`
               : '水泵停止 (流体静止)'}
+          </span>
+          <span
+            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium border ${
+              isTargetReached
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                : 'bg-cyan-50 text-cyan-800 border-cyan-200'
+            }`}
+          >
+            <Droplets className="w-3.5 h-3.5 text-cyan-600" />
+            <span>
+              累计供水: {accumulatedVol.toFixed(2)} L
+              {isTargetReached && ' (定量已达标)'}
+            </span>
           </span>
           <span
             className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border ${
@@ -258,11 +273,11 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
           </g>
 
           {/* 3. Bidirectional Flow Rate Meter (Right side of pump, x = 630) */}
-          <g transform="translate(630, 140)">
-            <rect x="0" y="10" width="84" height="50" rx="6" fill="#ffffff" stroke="#10b981" strokeWidth="2" />
-            <text x="42" y="32" fill="#059669" fontSize="12" fontWeight="bold" textAnchor="middle">{flow.toFixed(2)}</text>
-            <text x="42" y="46" fill="#64748b" fontSize="10" textAnchor="middle">L/min</text>
-            <text x="42" y="74" fill="#334155" fontSize="11" fontWeight="600" textAnchor="middle">双向流量传感器</text>
+          <g transform="translate(630, 136)">
+            <rect x="0" y="10" width="88" height="54" rx="6" fill="#ffffff" stroke="#10b981" strokeWidth="2" />
+            <text x="44" y="29" fill="#059669" fontSize="11.5" fontWeight="bold" textAnchor="middle">{flow.toFixed(2)} L/min</text>
+            <text x="44" y="45" fill="#0284c7" fontSize="9.5" fontWeight="600" textAnchor="middle">累计 {accumulatedVol.toFixed(2)} L</text>
+            <text x="44" y="78" fill="#334155" fontSize="11" fontWeight="600" textAnchor="middle">双向流量传感器</text>
           </g>
 
           {/* ================= TANK 2 (Right: 储水槽2 / 恒温加热) ================= */}

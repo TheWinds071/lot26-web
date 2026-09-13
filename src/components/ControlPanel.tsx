@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeftRight, Check, Flame, Power, RotateCcw, RotateCw, Save, Settings, Sliders, ToggleLeft, ToggleRight } from 'lucide-react';
+import { ArrowLeftRight, Check, Droplets, Flame, Power, RotateCcw, RotateCw, Save, Settings, Sliders, ToggleLeft, ToggleRight } from 'lucide-react';
 import type { DeviceState, ThresholdConfig } from '../types';
 
 interface ControlPanelProps {
@@ -9,6 +9,7 @@ interface ControlPanelProps {
   onControlPump: (active: boolean, speed?: number, direction?: 'FORWARD' | 'REVERSE') => void;
   onControlHeater: (active: boolean, power?: number) => void;
   onUpdateThresholds: (config: ThresholdConfig) => void;
+  onResetVolume?: () => void;
 }
 
 export const ControlPanel: React.FC<ControlPanelProps> = ({
@@ -18,6 +19,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   onControlPump,
   onControlHeater,
   onUpdateThresholds,
+  onResetVolume,
 }) => {
   const isAuto = deviceState?.auto_mode ?? false;
   const isEmergency = deviceState?.emergency_stop ?? false;
@@ -26,6 +28,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const pumpDirection = deviceState?.pump_direction ?? 'FORWARD';
   const isHeaterActive = deviceState?.heater_active ?? false;
   const heaterPower = deviceState?.heater_power ?? 0;
+  const accumulatedVolume = deviceState?.accumulated_volume ?? 0;
+  const targetVolumeReached = deviceState?.target_volume_reached ?? false;
 
   // Local form state for thresholds
   const [tempMin, setTempMin] = useState<number>(45);
@@ -34,6 +38,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const [tempDiffMax, setTempDiffMax] = useState<number>(15);
   const [pressMax, setPressMax] = useState<number>(800000);
   const [flowMin, setFlowMin] = useState<number>(0.05);
+  const [targetVolume, setTargetVolume] = useState<number>(10);
+  const [volumeControlEnabled, setVolumeControlEnabled] = useState<boolean>(true);
   const [savedSuccess, setSavedSuccess] = useState<boolean>(false);
   const [isDirty, setIsDirty] = useState<boolean>(false);
   const isInitializedRef = useRef<boolean>(false);
@@ -47,6 +53,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       setTempDiffMax(thresholds.temp_diff_max ?? 15);
       setPressMax(thresholds.pressure_max < 10 ? thresholds.pressure_max * 1_000_000 : thresholds.pressure_max);
       setFlowMin(thresholds.flow_rate_min);
+      setTargetVolume(thresholds.target_volume ?? 10);
+      setVolumeControlEnabled(thresholds.volume_control_enabled ?? true);
       isInitializedRef.current = true;
     }
   }, [thresholds, isDirty]);
@@ -59,6 +67,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       setTempDiffMax(thresholds.temp_diff_max ?? 15);
       setPressMax(thresholds.pressure_max < 10 ? thresholds.pressure_max * 1_000_000 : thresholds.pressure_max);
       setFlowMin(thresholds.flow_rate_min);
+      setTargetVolume(thresholds.target_volume ?? 10);
+      setVolumeControlEnabled(thresholds.volume_control_enabled ?? true);
     }
     setIsDirty(false);
   };
@@ -74,6 +84,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       pressure_max: Number(pressMax),
       flow_rate_min: Number(flowMin),
       flow_rate_target: Number(flowMin) <= 1.0 ? 0.30 : 25.0,
+      target_volume: Number(targetVolume),
+      volume_control_enabled: Boolean(volumeControlEnabled),
     });
     setIsDirty(false);
     setSavedSuccess(true);
@@ -187,6 +199,69 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 onChange={(e) => onControlPump(isPumpActive, Number(e.target.value), pumpDirection)}
                 className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600 disabled:opacity-50"
               />
+            </div>
+
+            {/* Volume Dosing & Auto-Stop Section */}
+            <div className="mt-3 pt-3 border-t border-slate-200 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="flex items-center gap-1.5 font-medium text-gray-700">
+                  <Droplets className="w-3.5 h-3.5 text-cyan-600" />
+                  <span>定量供水与累计流量</span>
+                </span>
+                <div className="flex items-center gap-1.5">
+                  {targetVolumeReached && (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-emerald-100 text-emerald-800 border border-emerald-300 animate-pulse">
+                      已达标停机
+                    </span>
+                  )}
+                  {onResetVolume && (
+                    <button
+                      type="button"
+                      onClick={onResetVolume}
+                      disabled={isEmergency}
+                      title="重置当前批次已流出水量"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-white hover:bg-gray-100 border border-gray-300 text-gray-600 transition-colors disabled:opacity-50 cursor-pointer"
+                    >
+                      <RotateCcw className="w-2.5 h-2.5" />
+                      <span>清零累计</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Progress Bar & Volume Stats */}
+              <div>
+                <div className="flex justify-between items-baseline text-xs mb-1">
+                  <span className="text-gray-500">
+                    已流出: <span className="font-mono font-bold text-cyan-700 text-sm">{accumulatedVolume.toFixed(2)}</span> L
+                  </span>
+                  <span className="text-gray-500">
+                    设定目标: <span className="font-mono font-bold text-gray-800">{targetVolume.toFixed(2)}</span> L
+                  </span>
+                </div>
+                <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-300 ${
+                      targetVolumeReached ? 'bg-emerald-500' : 'bg-cyan-500'
+                    }`}
+                    style={{
+                      width: `${Math.min(100, targetVolume > 0 ? (accumulatedVolume / targetVolume) * 100 : 0)}%`,
+                    }}
+                  />
+                </div>
+                <div className="flex justify-between text-[11px] text-gray-400 mt-1">
+                  <span>
+                    进度: {targetVolume > 0 ? Math.min(100, Math.round((accumulatedVolume / targetVolume) * 100)) : 0}%
+                  </span>
+                  <span>{volumeControlEnabled ? '⚡ 达标自动停泵已开启' : '⚠️ 定量自动停泵已关闭'}</span>
+                </div>
+              </div>
+
+              {targetVolumeReached && (
+                <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] leading-relaxed">
+                  ✅ <strong>定量供水已达标</strong>：已达到设定值 {accumulatedVolume.toFixed(2)} L，水泵已安全停止。点击启动水泵或清零可开始下一批次。
+                </div>
+              )}
             </div>
           </div>
 
@@ -443,6 +518,57 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 </span>
               </div>
               <span className="text-[11px] text-gray-500">水泵输送流量过低时切断加热</span>
+            </div>
+
+            {/* Target Volume */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-700 block">
+                目标供水量设定 (Target Volume)
+              </label>
+              <div className="flex rounded-lg shadow-xs">
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0.1"
+                  value={targetVolume}
+                  onChange={(e) => {
+                    setTargetVolume(Number(e.target.value));
+                    setIsDirty(true);
+                  }}
+                  className="w-full bg-white rounded-l-lg border border-gray-300 px-3 py-1.5 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 font-mono"
+                />
+                <span className="bg-slate-50 border border-l-0 border-gray-300 px-3 py-1.5 text-gray-500 text-xs font-medium rounded-r-lg flex items-center">
+                  L
+                </span>
+              </div>
+              <span className="text-[11px] text-gray-500">根据流量计检测流出水量达到此值时停泵</span>
+            </div>
+
+            {/* Volume Control Switch */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-700 block">
+                定水自动停泵策略 (Auto Stop)
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  setVolumeControlEnabled(!volumeControlEnabled);
+                  setIsDirty(true);
+                }}
+                className={`w-full py-1.5 px-3 rounded-lg border text-xs font-medium transition-all duration-200 flex items-center justify-between shadow-xs ${
+                  volumeControlEnabled
+                    ? 'bg-cyan-50 border-cyan-300 text-cyan-800'
+                    : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                <span>{volumeControlEnabled ? '开启: 到达设定值自动停泵' : '关闭: 仅统计水量不停泵'}</span>
+                {volumeControlEnabled ? (
+                  <ToggleRight className="w-4 h-4 text-cyan-600" />
+                ) : (
+                  <ToggleLeft className="w-4 h-4 text-gray-400" />
+                )}
+              </button>
+              <span className="text-[11px] text-gray-500">是否在水量达标时切断水泵输出</span>
             </div>
           </div>
 

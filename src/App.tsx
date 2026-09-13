@@ -65,7 +65,9 @@ export const App: React.FC = () => {
                 prevTh.pressure_min === nextTh.pressure_min &&
                 prevTh.pressure_max === nextTh.pressure_max &&
                 prevTh.flow_rate_min === nextTh.flow_rate_min &&
-                prevTh.flow_rate_target === nextTh.flow_rate_target;
+                prevTh.flow_rate_target === nextTh.flow_rate_target &&
+                prevTh.target_volume === nextTh.target_volume &&
+                prevTh.volume_control_enabled === nextTh.volume_control_enabled;
 
               return {
                 ...newStatus,
@@ -315,6 +317,20 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleResetVolume = async () => {
+    sendWsMessage({ action: 'reset_volume' });
+    try {
+      const res = await fetch('/api/control/reset-volume', { method: 'POST' });
+      if (res.ok) {
+        const state: DeviceState = await res.json();
+        setStatus((prev) => (prev ? { ...prev, device_state: state } : null));
+      }
+      fetchStatus();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const handleClearAlarms = async () => {
     try {
       await fetch('/api/alarms', { method: 'DELETE' });
@@ -388,6 +404,7 @@ export const App: React.FC = () => {
           onControlPump={handleControlPump}
           onControlHeater={handleControlHeater}
           onUpdateThresholds={handleUpdateThresholds}
+          onResetVolume={handleResetVolume}
         />
 
         {/* 6. Active Alarms & Configurable Alarm Rules Management */}

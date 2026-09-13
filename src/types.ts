@@ -142,7 +142,7 @@ export const METRIC_DEFINITIONS: Record<MetricType, MetricDefinition> = {
     label: '累计供水量',
     unit: 'L',
     defaultThreshold: 10,
-    step: 0.5,
+    step: 0.1,
     description: '当前批次/累计流过的水流量',
   },
   water_level_tank1: {

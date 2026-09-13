@@ -528,7 +528,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               <div className="flex rounded-lg shadow-xs">
                 <input
                   type="number"
-                  step="0.5"
+                  step="0.1"
                   min="0.1"
                   value={targetVolume}
                   onChange={(e) => {

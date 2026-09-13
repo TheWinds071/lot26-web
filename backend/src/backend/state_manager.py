@@ -62,12 +62,15 @@ class StateManager:
             pump_speed=60,
             heater_active=False,
             heater_power=0,
+            accumulated_volume=0.0,
+            target_volume_reached=False,
             emergency_stop=False,
         )
 
         self.thresholds = self._load_thresholds()
         self.tcp_client_connected = False
         self.last_packet_time: Optional[datetime] = None
+        self._last_flow_calc_time: Optional[datetime] = None
 
         # Listeners for real-time websocket broadcast
         self._listeners: Set[Callable[[dict], None]] = set()
@@ -140,12 +143,33 @@ class StateManager:
         except Exception as e:
             logger.error(f"Error resolving alarm in SQLite: {e}")
 
-    def process_telemetry(self, telemetry: TelemetryData) -> dict:
+    def process_telemetry(self, telemetry: TelemetryData, dt: Optional[float] = None) -> dict:
         """Ingests new dual-tank telemetry, records to SQLite, runs auto-control rule engine, returns control decisions."""
         self.latest_telemetry = telemetry
-        self.telemetry_history.append(telemetry)
         self.last_packet_time = datetime.now()
         self.tcp_client_connected = True
+
+        # Flow rate volume accumulation (Liters)
+        now = datetime.now()
+        if dt is None:
+            if self._last_flow_calc_time is not None:
+                calc_dt = (now - self._last_flow_calc_time).total_seconds()
+                calc_dt = max(0.05, min(5.0, calc_dt))
+            else:
+                calc_dt = 1.0
+        else:
+            calc_dt = max(0.0, dt)
+        self._last_flow_calc_time = now
+
+        if self.device_state.pump_active and telemetry.flow_rate > 0.0:
+            # Flow rate is in L/min; volume in dt seconds is (flow_rate / 60.0) * dt
+            dv = (telemetry.flow_rate / 60.0) * calc_dt
+            self.device_state.accumulated_volume = round(self.device_state.accumulated_volume + dv, 4)
+
+        if telemetry.total_volume is None or telemetry.total_volume == 0.0:
+            telemetry.total_volume = round(self.device_state.accumulated_volume, 3)
+
+        self.telemetry_history.append(telemetry)
 
         # Persist to SQLite
         try:
@@ -185,6 +209,8 @@ class StateManager:
             return telemetry.pressure
         elif metric == "flow_rate":
             return telemetry.flow_rate
+        elif metric == "accumulated_volume":
+            return self.device_state.accumulated_volume
         elif metric == "water_level_tank1":
             return telemetry.water_level_tank1
         elif metric == "water_level_tank2":
@@ -204,6 +230,7 @@ class StateManager:
             "temp_diff": "双槽温差",
             "pressure": "单管水压",
             "flow_rate": "单管流速",
+            "accumulated_volume": "累计供水量",
             "water_level_tank1": "水槽1水位",
             "water_level_tank2": "水槽2水位",
             "water_level_diff": "双槽水位差",
@@ -219,6 +246,7 @@ class StateManager:
             "temp_diff": "°C",
             "pressure": "Pa",
             "flow_rate": "L/min",
+            "accumulated_volume": "L",
             "water_level_tank1": "%",
             "water_level_tank2": "%",
             "water_level_diff": "%",
@@ -375,6 +403,42 @@ class StateManager:
             else:
                 self.resolve_alarm(alarm_type)
 
+        # 3.8 Volume Batching / Target Volume Auto-Stop Pump Check
+        target_vol = (
+            self.thresholds.target_volume
+            if self.thresholds.target_volume is not None
+            else 10.0
+        )
+        vol_ctrl_enabled = (
+            self.thresholds.volume_control_enabled
+            if self.thresholds.volume_control_enabled is not None
+            else True
+        )
+
+        if (
+            vol_ctrl_enabled
+            and self.device_state.pump_active
+            and target_vol > 0
+            and self.device_state.accumulated_volume >= target_vol
+        ):
+            self.device_state.pump_active = False
+            self.device_state.target_volume_reached = True
+            self.device_state.last_updated = datetime.now()
+            action_taken = True
+            logger.info(
+                f"[Volume Control] Target volume reached: {self.device_state.accumulated_volume:.2f}L >= "
+                f"{target_vol:.2f}L -> Auto stopped water pump!"
+            )
+            self.add_alarm(
+                level="INFO",
+                type="VOLUME_TARGET_REACHED",
+                message=(
+                    f"定量供水已达标: 累计已流出 {self.device_state.accumulated_volume:.2f} L 水 "
+                    f"(设定目标 {target_vol:.2f} L)，水泵已自动停止。"
+                ),
+                value=self.device_state.accumulated_volume,
+            )
+
         # 4. Auto Control Logic (Temperature Only - Water pump is manually controlled)
         if self.device_state.auto_mode and not self.device_state.emergency_stop:
             avg_temp = (telemetry.temp_tank1 + telemetry.temp_tank2) / 2.0
@@ -494,6 +558,12 @@ class StateManager:
     ) -> DeviceState:
         if self.device_state.emergency_stop and active:
             raise ValueError("紧急急停状态下无法启动水泵！请先解除急停。")
+        if active:
+            # If pump is restarted after target volume was reached, reset batch dosing state
+            if self.device_state.target_volume_reached:
+                self.device_state.accumulated_volume = 0.0
+                self.device_state.target_volume_reached = False
+                self.resolve_alarm("VOLUME_TARGET_REACHED")
         self.device_state.pump_active = active
         if speed is not None:
             self.device_state.pump_speed = max(0, min(100, speed))
@@ -501,6 +571,16 @@ class StateManager:
             self.device_state.pump_direction = direction
         self.device_state.last_updated = datetime.now()
         self._notify("device_state_updated", self.device_state.model_dump(mode="json"))
+        return self.device_state
+
+    def reset_accumulated_volume(self) -> DeviceState:
+        """Resets the current batch accumulated volume to 0 and clears target reached flag."""
+        self.device_state.accumulated_volume = 0.0
+        self.device_state.target_volume_reached = False
+        self.device_state.last_updated = datetime.now()
+        self.resolve_alarm("VOLUME_TARGET_REACHED")
+        self._notify("device_state_updated", self.device_state.model_dump(mode="json"))
+        logger.info("[StateManager] Batch accumulated flow volume reset to 0.0 L")
         return self.device_state
 
     def control_heater(self, active: bool, power: Optional[int] = None) -> DeviceState:

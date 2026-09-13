@@ -142,6 +142,7 @@ class TCPServer:
                             )
                             prev_heater_active = state_manager.device_state.heater_active
                             prev_heater_power = state_manager.device_state.heater_power
+                            prev_pump_active = state_manager.device_state.pump_active
 
                             # Process through auto-control engine & store state
                             state_manager.process_telemetry(telemetry)
@@ -155,11 +156,27 @@ class TCPServer:
                                 "pump_active": state_manager.device_state.pump_active,
                                 "pump_speed": state_manager.device_state.pump_speed,
                                 "pump_direction": state_manager.device_state.pump_direction,
+                                "accumulated_volume": state_manager.device_state.accumulated_volume,
+                                "target_volume_reached": state_manager.device_state.target_volume_reached,
                                 "emergency_stop": state_manager.device_state.emergency_stop,
                                 "timestamp": datetime.now().isoformat(),
                             }
                             writer.write((json.dumps(response) + "\n").encode("utf-8"))
                             await writer.drain()
+
+                            # If auto-control rule engine changed pump state (e.g. target volume reached or overpressure), broadcast PUMP_CONTROL
+                            if state_manager.device_state.pump_active != prev_pump_active:
+                                logger.info(
+                                    f"[Auto Control -> TCP Client] Pump state changed, sending command: "
+                                    f"cmd=PUMP_CONTROL, active={state_manager.device_state.pump_active}, "
+                                    f"accumulated_volume={state_manager.device_state.accumulated_volume:.2f}L"
+                                )
+                                await self.broadcast_downlink({
+                                    "cmd": "PUMP_CONTROL",
+                                    "pump_active": state_manager.device_state.pump_active,
+                                    "pump_speed": state_manager.device_state.pump_speed,
+                                    "pump_direction": state_manager.device_state.pump_direction,
+                                })
 
                             # If auto-control rule engine changed heater state, broadcast the explicit manual-style HEATER_CONTROL command
                             if (

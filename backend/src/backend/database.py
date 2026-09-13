@@ -66,12 +66,17 @@ class DatabaseManager:
                     temperature REAL NOT NULL,
                     pressure REAL NOT NULL,
                     flow_rate REAL NOT NULL,
+                    total_volume REAL DEFAULT 0.0,
                     water_level_tank1 REAL,
                     water_level_tank2 REAL,
                     timestamp TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
                 """)
+                try:
+                    cursor.execute("ALTER TABLE telemetry_history ADD COLUMN total_volume REAL DEFAULT 0.0;")
+                except sqlite3.OperationalError:
+                    pass
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_telemetry_timestamp ON telemetry_history(timestamp);")
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_telemetry_device ON telemetry_history(device_id);")
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_telemetry_created_at ON telemetry_history(created_at);")
@@ -224,6 +229,8 @@ class DatabaseManager:
             else round((telemetry.temp_tank1 + telemetry.temp_tank2) / 2.0, 2)
         )
 
+        tot_vol = float(telemetry.total_volume) if telemetry.total_volume is not None else 0.0
+
         with self._lock:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
@@ -231,9 +238,9 @@ class DatabaseManager:
                     """
                     INSERT INTO telemetry_history (
                         device_id, temp_tank1, temp_tank2, temperature,
-                        pressure, flow_rate, water_level_tank1, water_level_tank2,
+                        pressure, flow_rate, total_volume, water_level_tank1, water_level_tank2,
                         timestamp, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         telemetry.device_id,
@@ -242,6 +249,7 @@ class DatabaseManager:
                         avg_temp,
                         telemetry.pressure,
                         telemetry.flow_rate,
+                        tot_vol,
                         telemetry.water_level_tank1,
                         telemetry.water_level_tank2,
                         ts_str,
@@ -264,6 +272,7 @@ class DatabaseManager:
                 if t.temperature is not None
                 else round((t.temp_tank1 + t.temp_tank2) / 2.0, 2)
             )
+            tot_vol = float(t.total_volume) if t.total_volume is not None else 0.0
             records.append((
                 t.device_id,
                 t.temp_tank1,
@@ -271,6 +280,7 @@ class DatabaseManager:
                 avg_temp,
                 t.pressure,
                 t.flow_rate,
+                tot_vol,
                 t.water_level_tank1,
                 t.water_level_tank2,
                 self._format_datetime(t.timestamp),
@@ -284,9 +294,9 @@ class DatabaseManager:
                     """
                     INSERT INTO telemetry_history (
                         device_id, temp_tank1, temp_tank2, temperature,
-                        pressure, flow_rate, water_level_tank1, water_level_tank2,
+                        pressure, flow_rate, total_volume, water_level_tank1, water_level_tank2,
                         timestamp, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     records,
                 )
@@ -294,6 +304,8 @@ class DatabaseManager:
                 return cursor.rowcount
 
     def _row_to_telemetry(self, row: sqlite3.Row) -> TelemetryData:
+        row_keys = row.keys() if hasattr(row, "keys") else []
+        tot_vol = row["total_volume"] if "total_volume" in row_keys else 0.0
         return TelemetryData(
             device_id=row["device_id"],
             temp_tank1=row["temp_tank1"],
@@ -301,6 +313,7 @@ class DatabaseManager:
             temperature=row["temperature"],
             pressure=row["pressure"],
             flow_rate=row["flow_rate"],
+            total_volume=tot_vol,
             water_level_tank1=row["water_level_tank1"],
             water_level_tank2=row["water_level_tank2"],
             timestamp=row["timestamp"],
@@ -547,6 +560,7 @@ class DatabaseManager:
             "Avg_Temp(C)",
             "Pressure(MPa)",
             "FlowRate(L/min)",
+            "TotalVolume(L)",
             "Tank1_Level(%)",
             "Tank2_Level(%)",
         ])
@@ -560,6 +574,7 @@ class DatabaseManager:
                 t.temperature,
                 t.pressure,
                 t.flow_rate,
+                t.total_volume if t.total_volume is not None else 0.0,
                 t.water_level_tank1,
                 t.water_level_tank2,
             ])

@@ -63,6 +63,7 @@ class SinglePipeDualTankSimulator:
         self.ambient_temp = 22.0  # Ambient room temp (°C)
         self.pressure = 4000.0    # Single pipe pressure (Pa, idle)
         self.flow_rate = 0.0      # Pipe flow rate (L/min, idle)
+        self.accumulated_volume = 0.0  # Accumulated total volume in Liters
 
         # Actuator states (updated via TCP server downlink ACKs)
         self.pump_active = False
@@ -100,6 +101,10 @@ class SinglePipeDualTankSimulator:
 
         self.pressure += (target_pressure - self.pressure) * 0.4 + random.uniform(-15.0, 15.0)
         self.pressure = max(0.0, self.pressure)
+
+        # Accumulate volume when flow rate > 0
+        if self.pump_active and self.flow_rate > 0.0:
+            self.accumulated_volume += (self.flow_rate / 60.0) * dt
 
         # 2. Single-Pipe Bidirectional Thermodynamic & Liquid Transfer Dynamics
         if self.inject_high_temp:
@@ -156,6 +161,7 @@ class SinglePipeDualTankSimulator:
                         "temperature": round((self.temp_tank1 + self.temp_tank2) / 2.0, 2),
                         "pressure": round(self.pressure, 3),
                         "flow_rate": round(self.flow_rate, 2),
+                        "total_volume": round(self.accumulated_volume, 3),
                         "water_level_tank1": round(self.water_level_tank1, 1),
                         "water_level_tank2": round(self.water_level_tank2, 1),
                     }
@@ -168,7 +174,7 @@ class SinglePipeDualTankSimulator:
                         f"📤 Telemetry Sent -> Tank1: {payload['temp_tank1']:4.1f}°C | "
                         f"Tank2: {payload['temp_tank2']:4.1f}°C | "
                         f"Press: {payload['pressure']:6.0f}Pa | "
-                        f"Flow: {payload['flow_rate']:5.2f}L/min | "
+                        f"Flow: {payload['flow_rate']:5.2f}L/min | Vol: {self.accumulated_volume:5.2f}L | "
                         f"Pump: [{'ON' if self.pump_active else 'OFF'} {dir_label} ({self.pump_speed}%), "
                         f"Heater: {'ON' if self.heater_active else 'OFF'} ({self.heater_power}%)]"
                     )
@@ -193,6 +199,8 @@ class SinglePipeDualTankSimulator:
                                     self.heater_power = resp_json["heater_power"]
                                 if "emergency_stop" in resp_json:
                                     self.emergency_stop = resp_json["emergency_stop"]
+                                if resp_json.get("target_volume_reached"):
+                                    print("🎯 [Simulator] Target volume reached! Water pump auto-stopped by SCADA controller.")
                             # Drain any additional queued lines in reader buffer
                             if not reader.at_eof() and reader._buffer:
                                 resp_data = await reader.readline()

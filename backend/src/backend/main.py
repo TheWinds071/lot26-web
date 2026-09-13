@@ -335,6 +335,13 @@ async def control_heater(req: HeaterControlRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@app.post("/api/control/reset-volume", response_model=DeviceState)
+async def reset_volume():
+    """Resets the current batch accumulated volume and target reached state."""
+    state = state_manager.reset_accumulated_volume()
+    return state
+
+
 @app.websocket("/ws/telemetry")
 async def websocket_telemetry(websocket: WebSocket):
     """WebSocket endpoint for real-time telemetry streaming and live interaction."""
@@ -391,6 +398,8 @@ async def websocket_telemetry(websocket: WebSocket):
                         "cmd": "EMERGENCY_STOP",
                         "emergency_stop": state.emergency_stop,
                     })
+                elif action == "reset_volume":
+                    state_manager.reset_accumulated_volume()
                 elif action == "update_thresholds":
                     state_manager.update_thresholds(ThresholdConfig(**msg.get("thresholds", {})))
                     if state_manager.device_state.auto_mode:

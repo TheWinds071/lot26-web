@@ -12,6 +12,7 @@ class TelemetryData(BaseModel):
     temperature: Optional[float] = Field(default=None, description="Average/Primary water temperature (°C)")
     pressure: float = Field(..., description="Single Pipe Pressure in Pa")
     flow_rate: float = Field(..., description="Single Pipe Flow Rate in L/min")
+    total_volume: Optional[float] = Field(default=0.0, description="Accumulated pipe flow volume in liters (L)")
     water_level_tank1: Optional[float] = Field(default=75.0, description="Tank 1 Water Level (%)")
     water_level_tank2: Optional[float] = Field(default=65.0, description="Tank 2 Water Level (%)")
     timestamp: datetime = Field(default_factory=datetime.now, description="Timestamp")
@@ -32,6 +33,8 @@ class DeviceState(BaseModel):
     pump_speed: int = Field(default=60, ge=0, le=100, description="Pump speed percentage (0-100%)")
     heater_active: bool = Field(default=False, description="Heating module running state")
     heater_power: int = Field(default=0, ge=0, le=100, description="Heater power percentage (0-100%)")
+    accumulated_volume: float = Field(default=0.0, description="Current batch/session accumulated water volume in liters (L)")
+    target_volume_reached: bool = Field(default=False, description="Flag indicating target batch volume has been reached and pump stopped")
     emergency_stop: bool = Field(default=False, description="Emergency stop triggered")
     last_updated: datetime = Field(default_factory=datetime.now, description="Last update timestamp")
 
@@ -52,6 +55,10 @@ class ThresholdConfig(BaseModel):
     flow_rate_min: float = Field(default=0.05, description="Minimum flow rate threshold to prevent dry-run (L/min)")
     flow_rate_target: float = Field(default=0.30, description="Target flow rate (L/min)")
 
+    # Volume / Batching rules (Liters)
+    target_volume: float = Field(default=10.0, description="Target batch water volume threshold in liters (L)")
+    volume_control_enabled: bool = Field(default=True, description="Enable automatic pump stop when target volume is reached")
+
 
 class AlarmEvent(BaseModel):
     """Alarm and Alert Log Item"""
@@ -70,7 +77,7 @@ class AlarmRule(BaseModel):
     name: str = Field(..., description="Alarm rule name, e.g. 水槽1水温过高报警")
     metric: str = Field(
         ...,
-        description="Metric field name: temp_tank1, temp_tank2, temperature, temp_diff, pressure, flow_rate, water_level_tank1, water_level_tank2, water_level_diff",
+        description="Metric field name: temp_tank1, temp_tank2, temperature, temp_diff, pressure, flow_rate, accumulated_volume, water_level_tank1, water_level_tank2, water_level_diff",
     )
     operator: str = Field(
         ...,

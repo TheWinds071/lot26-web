@@ -5,6 +5,7 @@ export interface TelemetryData {
   temperature: number;
   pressure: number; // 单管路水流压力 (Pa)
   flow_rate: number;
+  total_volume?: number; // 管道累计流量 (L)
   water_level_tank1?: number;
   water_level_tank2?: number;
   timestamp: string;
@@ -17,6 +18,8 @@ export interface DeviceState {
   pump_speed: number;
   heater_active: boolean;
   heater_power: number;
+  accumulated_volume?: number; // 当前批次累计水量 (L)
+  target_volume_reached?: boolean; // 是否已达目标供水量并停泵
   emergency_stop: boolean;
   last_updated: string;
 }
@@ -30,6 +33,8 @@ export interface ThresholdConfig {
   pressure_max: number;
   flow_rate_min: number;
   flow_rate_target: number;
+  target_volume?: number; // 目标供水量设定阈值 (L)
+  volume_control_enabled?: boolean; // 是否启用定水量自动停泵
 }
 
 export interface AlarmEvent {
@@ -49,6 +54,7 @@ export type MetricType =
   | 'temp_diff'
   | 'pressure'
   | 'flow_rate'
+  | 'accumulated_volume'
   | 'water_level_tank1'
   | 'water_level_tank2'
   | 'water_level_diff';
@@ -130,6 +136,14 @@ export const METRIC_DEFINITIONS: Record<MetricType, MetricDefinition> = {
     defaultThreshold: 0.05,
     step: 0.01,
     description: '单管道微流速监测 (防干烧)',
+  },
+  accumulated_volume: {
+    value: 'accumulated_volume',
+    label: '累计供水量',
+    unit: 'L',
+    defaultThreshold: 10,
+    step: 0.5,
+    description: '当前批次/累计流过的水流量',
   },
   water_level_tank1: {
     value: 'water_level_tank1',
@@ -272,6 +286,12 @@ export interface SystemConfigResponse {
       flow_sensor?: {
         target_flow_rate_lpm?: number;
         min_flow_dry_run_threshold_lpm?: number;
+        volume_control?: {
+          enabled?: boolean;
+          target_volume_liters?: number;
+          auto_stop_pump?: boolean;
+          unit?: string;
+        };
       };
     };
     system_safety_thresholds?: {

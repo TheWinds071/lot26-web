@@ -109,6 +109,7 @@ class ConfigLoader:
             pipe = self.raw_config.get("single_pipeline_network", {})
             press_sensor = pipe.get("pressure_sensor", {})
             flow_sensor = pipe.get("flow_sensor", {})
+            volume_ctrl = flow_sensor.get("volume_control", {})
 
             return ThresholdConfig(
                 temp_target=float(temp_ctrl.get("target_temperature_celsius", 55.0)),
@@ -119,6 +120,8 @@ class ConfigLoader:
                 pressure_max=float(press_sensor.get("overpressure_alarm_threshold_pa", 800000.0)),
                 flow_rate_min=float(flow_sensor.get("min_flow_dry_run_threshold_lpm", 0.05)),
                 flow_rate_target=float(flow_sensor.get("target_flow_rate_lpm", 0.30)),
+                target_volume=float(volume_ctrl.get("target_volume_liters", 10.0)),
+                volume_control_enabled=bool(volume_ctrl.get("enabled", True)),
             )
         except Exception as e:
             logger.warning(f"Could not derive ThresholdConfig from JSON5: {e}, using defaults.")

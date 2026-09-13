@@ -54,6 +54,7 @@
               temperature: 40.0, // 综合平均水温 (°C，可选，未传时自动计算)
               pressure: 35000.0, // 单管路流体压力 (Pa)
               flow_rate: 0.35, // 单管路水流流速 (L/min)
+              total_volume: 2.5, // 管道累计流量 (L，可选)
               water_level_tank1: 75.0, // 水槽1当前液位百分比 (%)
               water_level_tank2: 65.0, // 水槽2当前液位百分比 (%)
               timestamp: '2026-09-12T10:00:00', // 采集时间戳 (ISO 8601，可选)
@@ -133,6 +134,7 @@
         'set_heater', // 前端控制加热器: { action: 'set_heater', active: true, power: 100 }
         'set_emergency_stop', // 触发/解除急停: { action: 'set_emergency_stop', emergency_stop: true }
         'update_thresholds', // 更新控温与安全阈值: { action: 'update_thresholds', thresholds: { ... } }
+        'reset_volume', // 重置累计流量与批次供水量: { action: 'reset_volume' }
       ],
       heartbeat_interval_seconds: 30.0, // 前端保活心跳检测周期
     },
@@ -389,6 +391,13 @@
       target_flow_rate_lpm: 0.30, // 目标调谐流速 (0.30 L/min)
       min_flow_dry_run_threshold_lpm: 0.05, // 低流量/防干烧告警阈值 (低于 0.05 L/min 且水泵运行时切断加热)
       unit: 'L/min',
+      // 定量供水与累计流量自动控制配置 (Volume Batching & Auto Pump Stop Control)
+      volume_control: {
+        enabled: true, // 是否启用定量控制功能 (达到设定水量时自动停泵)
+        target_volume_liters: 10.0, // 目标供水累计水量设定值 (升, L)
+        auto_stop_pump: true, // 到达设定值时自动停止水泵
+        unit: 'L',
+      },
     },
   },
 

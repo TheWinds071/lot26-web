@@ -141,7 +141,6 @@ class TCPServer:
                                 f"Flow={telemetry.flow_rate:.2f}L/min"
                             )
                             prev_heater_active = state_manager.device_state.heater_active
-                            prev_heater_power = state_manager.device_state.heater_power
                             prev_pump_active = state_manager.device_state.pump_active
 
                             # Process through auto-control engine & store state
@@ -152,10 +151,10 @@ class TCPServer:
                                 "status": "ACK",
                                 "cmd": "HEATER_CONTROL",
                                 "heater_active": state_manager.device_state.heater_active,
-                                "heater_power": state_manager.device_state.heater_power,
                                 "pump_active": state_manager.device_state.pump_active,
                                 "pump_speed": state_manager.device_state.pump_speed,
                                 "pump_direction": state_manager.device_state.pump_direction,
+                                "relay_active": state_manager.device_state.relay_active,
                                 "accumulated_volume": state_manager.device_state.accumulated_volume,
                                 "target_volume_reached": state_manager.device_state.target_volume_reached,
                                 "emergency_stop": state_manager.device_state.emergency_stop,
@@ -179,18 +178,14 @@ class TCPServer:
                                 })
 
                             # If auto-control rule engine changed heater state, broadcast the explicit manual-style HEATER_CONTROL command
-                            if (
-                                state_manager.device_state.heater_active != prev_heater_active
-                                or state_manager.device_state.heater_power != prev_heater_power
-                            ):
+                            if state_manager.device_state.heater_active != prev_heater_active:
                                 logger.info(
-                                    f"[Auto Control -> TCP Client] Heater state changed, sending manual command: "
-                                    f"cmd=HEATER_CONTROL, active={state_manager.device_state.heater_active}, power={state_manager.device_state.heater_power}"
+                                    f"[Auto Control -> TCP Client] Heater state changed, sending command: "
+                                    f"cmd=HEATER_CONTROL, active={state_manager.device_state.heater_active}"
                                 )
                                 await self.broadcast_downlink({
                                     "cmd": "HEATER_CONTROL",
                                     "heater_active": state_manager.device_state.heater_active,
-                                    "heater_power": state_manager.device_state.heater_power,
                                 })
                         else:
                             logger.warning(f"[TCP Server] Unrecognized payload: {line}")

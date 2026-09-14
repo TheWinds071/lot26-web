@@ -33,6 +33,7 @@ class DeviceState(BaseModel):
     pump_speed: int = Field(default=60, ge=0, le=100, description="Pump speed percentage (0-100%)")
     heater_active: bool = Field(default=False, description="Heating module running state")
     heater_power: int = Field(default=0, ge=0, le=100, description="Heater power percentage (0-100%)")
+    relay_active: bool = Field(default=False, description="Control relay state (True: Closed/ON, False: Open/OFF)")
     accumulated_volume: float = Field(default=0.0, description="Current batch/session accumulated water volume in liters (L)")
     target_volume_reached: bool = Field(default=False, description="Flag indicating target batch volume has been reached and pump stopped")
     emergency_stop: bool = Field(default=False, description="Emergency stop triggered")

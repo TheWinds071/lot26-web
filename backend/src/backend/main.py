@@ -96,6 +96,10 @@ class HeaterControlRequest(BaseModel):
     power: Optional[int] = None
 
 
+class RelayControlRequest(BaseModel):
+    active: bool
+
+
 class EmergencyStopRequest(BaseModel):
     emergency_stop: bool
 
@@ -329,13 +333,26 @@ async def control_pump(req: PumpControlRequest):
 
 @app.post("/api/control/heater", response_model=DeviceState)
 async def control_heater(req: HeaterControlRequest):
-    """Manual heater control (on/off, power)."""
+    """Manual heater control (on/off)."""
     try:
         state = state_manager.control_heater(req.active, req.power)
         await tcp_server.broadcast_downlink({
             "cmd": "HEATER_CONTROL",
             "heater_active": state.heater_active,
-            "heater_power": state.heater_power,
+        })
+        return state
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/control/relay", response_model=DeviceState)
+async def control_relay(req: RelayControlRequest):
+    """Manual control relay (on/off)."""
+    try:
+        state = state_manager.control_relay(req.active)
+        await tcp_server.broadcast_downlink({
+            "cmd": "RELAY_CONTROL",
+            "relay_active": state.relay_active,
         })
         return state
     except ValueError as e:
@@ -397,7 +414,12 @@ async def websocket_telemetry(websocket: WebSocket):
                     await tcp_server.broadcast_downlink({
                         "cmd": "HEATER_CONTROL",
                         "heater_active": state.heater_active,
-                        "heater_power": state.heater_power,
+                    })
+                elif action == "set_relay":
+                    state = state_manager.control_relay(msg.get("active", False))
+                    await tcp_server.broadcast_downlink({
+                        "cmd": "RELAY_CONTROL",
+                        "relay_active": state.relay_active,
                     })
                 elif action == "set_emergency_stop":
                     state = state_manager.set_emergency_stop(msg.get("emergency_stop", False))

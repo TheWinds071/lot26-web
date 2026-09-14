@@ -62,6 +62,7 @@ class StateManager:
             pump_speed=60,
             heater_active=False,
             heater_power=0,
+            relay_active=False,
             accumulated_volume=0.0,
             target_volume_reached=False,
             emergency_stop=False,
@@ -274,10 +275,11 @@ class StateManager:
         action_taken = False
 
         if self.device_state.emergency_stop:
-            if self.device_state.pump_active or self.device_state.heater_active:
+            if self.device_state.pump_active or self.device_state.heater_active or self.device_state.relay_active:
                 self.device_state.pump_active = False
                 self.device_state.heater_active = False
                 self.device_state.heater_power = 0
+                self.device_state.relay_active = False
                 self.device_state.last_updated = datetime.now()
                 action_taken = True
             return action_taken
@@ -539,10 +541,11 @@ class StateManager:
             self.device_state.pump_active = False
             self.device_state.heater_active = False
             self.device_state.heater_power = 0
+            self.device_state.relay_active = False
             self.add_alarm(
                 level="CRITICAL",
                 type="EMERGENCY_STOP",
-                message="紧急急停按钮已被按下！所有水泵与加热器已强制锁定关闭。",
+                message="紧急急停按钮已被按下！所有水泵、加热器与继电器已强制锁定断开。",
             )
         else:
             self.resolve_alarm("EMERGENCY_STOP")
@@ -587,14 +590,19 @@ class StateManager:
         if self.device_state.emergency_stop and active:
             raise ValueError("紧急急停状态下无法启动加热模块！请先解除急停。")
         self.device_state.heater_active = active
-        if power is not None:
-            self.device_state.heater_power = max(0, min(100, power))
-        elif active and self.device_state.heater_power == 0:
-            self.device_state.heater_power = 100
-        elif not active:
-            self.device_state.heater_power = 0
+        # Heater power setting is cancelled; active is full on (100%) and inactive is 0%
+        self.device_state.heater_power = 100 if active else 0
         self.device_state.last_updated = datetime.now()
         self._notify("device_state_updated", self.device_state.model_dump(mode="json"))
+        return self.device_state
+
+    def control_relay(self, active: bool) -> DeviceState:
+        if self.device_state.emergency_stop and active:
+            raise ValueError("紧急急停状态下无法闭合继电器！请先解除急停。")
+        self.device_state.relay_active = active
+        self.device_state.last_updated = datetime.now()
+        self._notify("device_state_updated", self.device_state.model_dump(mode="json"))
+        logger.info(f"[StateManager] Control relay switched to: {'ON/Closed' if active else 'OFF/Open'}")
         return self.device_state
 
     def get_system_status(self) -> SystemStatus:

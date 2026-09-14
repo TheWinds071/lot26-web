@@ -70,7 +70,7 @@ class SinglePipeDualTankSimulator:
         self.pump_direction = "FORWARD"  # "FORWARD" (1->2) or "REVERSE" (2->1)
         self.pump_speed = 60      # %
         self.heater_active = False
-        self.heater_power = 0     # %
+        self.relay_active = False
         self.emergency_stop = False
 
         # Simulation anomaly flags
@@ -111,11 +111,10 @@ class SinglePipeDualTankSimulator:
             self.temp_tank1 += 2.0 * dt
             self.temp_tank2 += 1.5 * dt
         else:
-            # Heater in Tank 2
+            # Heater in Tank 2 (pure on/off control)
             if self.heater_active and not self.emergency_stop:
-                heat_power_factor = (self.heater_power / 100.0) * 1.6
                 flow_factor = 1.0 if self.flow_rate < 5 else 30.0 / (self.flow_rate + 10.0)
-                self.temp_tank2 += heat_power_factor * flow_factor * dt * 0.35
+                self.temp_tank2 += 1.6 * flow_factor * dt * 0.35
             else:
                 # Natural cooling towards ambient
                 self.temp_tank2 += (self.ambient_temp - self.temp_tank2) * 0.03 * dt
@@ -176,7 +175,8 @@ class SinglePipeDualTankSimulator:
                         f"Press: {payload['pressure']:6.0f}Pa | "
                         f"Flow: {payload['flow_rate']:5.2f}L/min | Vol: {self.accumulated_volume:5.2f}L | "
                         f"Pump: [{'ON' if self.pump_active else 'OFF'} {dir_label} ({self.pump_speed}%), "
-                        f"Heater: {'ON' if self.heater_active else 'OFF'} ({self.heater_power}%)]"
+                        f"Heater: {'ON' if self.heater_active else 'OFF'}, "
+                        f"Relay: {'CLOSED' if self.relay_active else 'OPEN'}]"
                     )
 
                     # Read downlink feedback from TCP Server
@@ -195,8 +195,8 @@ class SinglePipeDualTankSimulator:
                                     self.pump_direction = resp_json["pump_direction"]
                                 if "heater_active" in resp_json:
                                     self.heater_active = resp_json["heater_active"]
-                                if "heater_power" in resp_json:
-                                    self.heater_power = resp_json["heater_power"]
+                                if "relay_active" in resp_json:
+                                    self.relay_active = resp_json["relay_active"]
                                 if "emergency_stop" in resp_json:
                                     self.emergency_stop = resp_json["emergency_stop"]
                                 if resp_json.get("target_volume_reached"):

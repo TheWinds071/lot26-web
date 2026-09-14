@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeftRight, Check, Droplets, Flame, Power, RotateCcw, RotateCw, Save, Settings, Sliders, ToggleLeft, ToggleRight } from 'lucide-react';
+import { ArrowLeftRight, Check, Droplets, Flame, Power, RotateCcw, RotateCw, Save, Settings, Sliders, ToggleLeft, ToggleRight, Zap } from 'lucide-react';
 import type { DeviceState, ThresholdConfig } from '../types';
 
 interface ControlPanelProps {
@@ -7,7 +7,8 @@ interface ControlPanelProps {
   thresholds?: ThresholdConfig;
   onSetMode: (autoMode: boolean) => void;
   onControlPump: (active: boolean, speed?: number, direction?: 'FORWARD' | 'REVERSE') => void;
-  onControlHeater: (active: boolean, power?: number) => void;
+  onControlHeater: (active: boolean) => void;
+  onControlRelay?: (active: boolean) => void;
   onUpdateThresholds: (config: ThresholdConfig) => void;
   onResetVolume?: () => void;
 }
@@ -18,6 +19,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   onSetMode,
   onControlPump,
   onControlHeater,
+  onControlRelay,
   onUpdateThresholds,
   onResetVolume,
 }) => {
@@ -27,7 +29,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const pumpSpeed = deviceState?.pump_speed ?? 60;
   const pumpDirection = deviceState?.pump_direction ?? 'FORWARD';
   const isHeaterActive = deviceState?.heater_active ?? false;
-  const heaterPower = deviceState?.heater_power ?? 0;
+  const isRelayActive = deviceState?.relay_active ?? false;
   const accumulatedVolume = deviceState?.accumulated_volume ?? 0;
   const targetVolumeReached = deviceState?.target_volume_reached ?? false;
 
@@ -265,79 +267,137 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             </div>
           </div>
 
-          {/* Heater Control Section */}
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 transition-all duration-200">
-            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                <Flame
-                  className={`w-4 h-4 ${
-                    isHeaterActive ? 'text-amber-500 animate-pulse' : 'text-gray-400'
-                  }`}
-                />
-                <span className="text-sm font-semibold text-gray-800">水槽2加热模块</span>
+          {/* Dual Column: Left = 水槽2加热模块 (缩小为一半，取消功率设定), Right = 控制继电器 (剩下的一半) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            {/* 1. Left Half: 水槽2加热模块 */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 transition-all duration-200 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <Flame
+                      className={`w-4 h-4 ${
+                        isHeaterActive ? 'text-amber-500 animate-pulse' : 'text-gray-400'
+                      }`}
+                    />
+                    <span className="text-sm font-semibold text-gray-800">水槽2加热模块</span>
+                  </div>
+                  <span
+                    className={`inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium border ${
+                      isHeaterActive
+                        ? 'bg-amber-100 text-amber-800 border-amber-300'
+                        : 'bg-slate-100 text-slate-600 border-slate-200'
+                    }`}
+                  >
+                    {isHeaterActive ? '● 加热中' : '○ 待机'}
+                  </span>
+                </div>
+
+                <p className="text-[11px] text-gray-500 mb-3 leading-relaxed">
+                  {isAuto
+                    ? `智能恒温自控中 (恒温目标 ${tempTarget}°C)`
+                    : '手动纯开关控制 (已取消功率设定)'}
+                </p>
               </div>
 
-              <div className="flex items-center gap-2">
-                {/* 智能自控切换按钮 */}
-                <button
-                  disabled={isEmergency}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border shadow-xs transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed ${
-                    isAuto
-                      ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                  }`}
-                  onClick={() => onSetMode(!isAuto)}
-                  title={isAuto ? '当前为智能自控模式（仅控温），点击切换为手动' : '当前为手动模式，点击开启水温智能自控'}
-                >
-                  {isAuto ? (
-                    <ToggleRight className="w-4 h-4 text-blue-600" />
-                  ) : (
-                    <ToggleLeft className="w-4 h-4 text-gray-400" />
-                  )}
-                  <span>{isAuto ? '智能自控' : '手动模式'}</span>
-                </button>
+              <div className="space-y-2 pt-2 border-t border-slate-200/80">
+                {/* 智能自控 / 手动模式切换 */}
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-gray-600 font-medium">温控模式</span>
+                  <button
+                    disabled={isEmergency}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border shadow-xs transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed ${
+                      isAuto
+                        ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                    }`}
+                    onClick={() => onSetMode(!isAuto)}
+                    title={isAuto ? '当前为智能自控模式（仅控温），点击切换为手动' : '当前为手动模式，点击开启水温智能自控'}
+                  >
+                    {isAuto ? (
+                      <ToggleRight className="w-3.5 h-3.5 text-blue-600" />
+                    ) : (
+                      <ToggleLeft className="w-3.5 h-3.5 text-gray-400" />
+                    )}
+                    <span>{isAuto ? '智能自控' : '手动模式'}</span>
+                  </button>
+                </div>
 
-                {/* 加热启停按键 */}
-                <button
-                  disabled={isEmergency || isAuto}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium shadow-xs transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed ${
-                    isHeaterActive
-                      ? 'bg-amber-600 hover:bg-amber-700 text-white'
-                      : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                  }`}
-                  onClick={() => onControlHeater(!isHeaterActive, isHeaterActive ? 0 : 100)}
-                  title={isAuto ? '智能自控生效中，加热状态由恒温规则自动托管' : undefined}
-                >
-                  <Power className="w-3.5 h-3.5" />
-                  <span>{isHeaterActive ? '加热中' : '待机'}</span>
-                </button>
+                {/* 加热启闭按键 */}
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-gray-600 font-medium">加热开关</span>
+                  <button
+                    disabled={isEmergency || isAuto}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium shadow-xs transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed ${
+                      isHeaterActive
+                        ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                        : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                    }`}
+                    onClick={() => onControlHeater(!isHeaterActive)}
+                    title={isAuto ? '智能自控生效中，加热状态由恒温规则自动托管' : undefined}
+                  >
+                    <Power className="w-3.5 h-3.5" />
+                    <span>{isHeaterActive ? '停止加热' : '启动加热'}</span>
+                  </button>
+                </div>
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <div className="flex justify-between text-xs text-gray-600">
-                <span>加热输出功率 {isAuto && <span className="text-blue-600 font-medium">(自控中)</span>}</span>
-                <span className="font-mono font-bold text-gray-900">{heaterPower}%</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                step="10"
-                value={heaterPower}
-                disabled={isEmergency || isAuto}
-                onChange={(e) =>
-                  onControlHeater(Number(e.target.value) > 0, Number(e.target.value))
-                }
-                className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-600 disabled:opacity-50"
-              />
-            </div>
+            {/* 2. Right Half: 控制继电器 (剩下的一半) */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 transition-all duration-200 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <Zap
+                      className={`w-4 h-4 ${
+                        isRelayActive ? 'text-amber-500 animate-pulse' : 'text-gray-400'
+                      }`}
+                    />
+                    <span className="text-sm font-semibold text-gray-800">控制继电器</span>
+                  </div>
+                  <span
+                    className={`inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium border ${
+                      isRelayActive
+                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                        : 'bg-slate-100 text-slate-600 border-slate-200'
+                    }`}
+                  >
+                    {isRelayActive ? '⚡ 闭合 / 导通' : '○ 断开 / 隔离'}
+                  </span>
+                </div>
 
-            {isAuto && (
-              <div className="mt-3 p-2.5 rounded-lg bg-blue-50/80 border border-blue-100 text-blue-900 text-xs leading-relaxed">
-                💡 <strong>水温智能自控中</strong>：低于目标温度时自动开启加热，达到目标温度（{tempTarget}°C）或超温时自动停止。加热功率与启闭由系统托管，水泵为手动独立控制。
+                <p className="text-[11px] text-gray-500 mb-3 leading-relaxed">
+                  工艺水槽辅助回路开关，支持外围执行器、加药或电磁阀通断控制。
+                </p>
               </div>
-            )}
+
+              <div className="space-y-2 pt-2 border-t border-slate-200/80">
+                {/* 触点状态示意 */}
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-gray-600 font-medium">触点状态</span>
+                  <span className="font-mono text-xs font-semibold text-gray-700">
+                    {isRelayActive ? 'NO ➔ 闭合导通' : 'NO ➔ 断开隔离'}
+                  </span>
+                </div>
+
+                {/* 继电器控制按键 */}
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-gray-600 font-medium">继电器开关</span>
+                  <button
+                    disabled={isEmergency}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium shadow-xs transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed ${
+                      isRelayActive
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                        : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                    }`}
+                    onClick={() => onControlRelay?.(!isRelayActive)}
+                    title="切换继电器吸合/断开状态"
+                  >
+                    <Power className="w-3.5 h-3.5" />
+                    <span>{isRelayActive ? '断开继电器' : '闭合继电器'}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

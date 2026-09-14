@@ -275,13 +275,27 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleControlHeater = async (active: boolean, power?: number) => {
-    sendWsMessage({ action: 'set_heater', active, power });
+  const handleControlHeater = async (active: boolean) => {
+    sendWsMessage({ action: 'set_heater', active });
     try {
       await fetch('/api/control/heater', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ active, power }),
+        body: JSON.stringify({ active }),
+      });
+      fetchStatus();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleControlRelay = async (active: boolean) => {
+    sendWsMessage({ action: 'set_relay', active });
+    try {
+      await fetch('/api/control/relay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active }),
       });
       fetchStatus();
     } catch (e) {
@@ -403,6 +417,7 @@ export const App: React.FC = () => {
           onSetMode={handleSetMode}
           onControlPump={handleControlPump}
           onControlHeater={handleControlHeater}
+          onControlRelay={handleControlRelay}
           onUpdateThresholds={handleUpdateThresholds}
           onResetVolume={handleResetVolume}
         />

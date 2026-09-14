@@ -24,7 +24,8 @@ export interface DeviceState {
   pump_direction: 'FORWARD' | 'REVERSE';
   pump_speed: number;
   heater_active: boolean;
-  heater_power: number;
+  heater_power?: number;
+  relay_active?: boolean; // 控制继电器启闭状态 (true: 吸合/开启, false: 断开/关闭)
   accumulated_volume?: number; // 当前批次累计水量 (L)
   target_volume_reached?: boolean; // 是否已达目标供水量并停泵
   emergency_stop: boolean;

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Droplets, Flame, Gauge, RotateCw, Thermometer, Waves } from 'lucide-react';
+import { Droplets, Flame, Gauge, RotateCw, Thermometer, Waves, Zap } from 'lucide-react';
 import type { DeviceState, SystemConfigResponse, TelemetryData, ThresholdConfig } from '../types';
 
 interface TelemetryCardsProps {
@@ -255,14 +255,18 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
               style={{ width: `${flowPercentage}%` }}
             ></div>
           </div>
-          <div className="flex items-center justify-between text-[11px] text-gray-600 pt-1 border-t border-gray-100">
+          <div className="flex items-center justify-between text-[11px] text-gray-600 pt-1 border-t border-gray-100 flex-wrap gap-1">
             <div className="flex items-center gap-1">
               <RotateCw className={`w-3 h-3 ${isPumpActive ? 'text-blue-600 animate-spin' : 'text-gray-400'}`} />
               <span>水泵 {isPumpActive ? `${pumpDirection === 'FORWARD' ? '正转' : '反转'} ${deviceState?.pump_speed}%` : '停止'}</span>
             </div>
             <div className="flex items-center gap-1">
               <Flame className={`w-3 h-3 ${deviceState?.heater_active ? 'text-amber-500 animate-pulse' : 'text-gray-400'}`} />
-              <span>加热 {deviceState?.heater_active ? `${deviceState.heater_power}%` : '待机'}</span>
+              <span>加热 {deviceState?.heater_active ? '运行' : '待机'}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Zap className={`w-3 h-3 ${deviceState?.relay_active ? 'text-emerald-500 animate-pulse' : 'text-gray-400'}`} />
+              <span>继电器 {deviceState?.relay_active ? '导通' : '断开'}</span>
             </div>
           </div>
         </div>

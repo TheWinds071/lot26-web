@@ -23,8 +23,8 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
   const pumpDirection = deviceState?.pump_direction ?? 'FORWARD';
   const isForward = pumpDirection === 'FORWARD';
   const isHeaterOn = (deviceState?.heater_active ?? false) && !deviceState?.emergency_stop;
+  const isRelayOn = (deviceState?.relay_active ?? false) && !deviceState?.emergency_stop;
   const pumpSpeed = deviceState?.pump_speed ?? 0;
-  const heaterPower = deviceState?.heater_power ?? 0;
 
   const t1 = telemetry?.temp_tank1 ?? telemetry?.temperature ?? 0;
   const t2 = telemetry?.temp_tank2 ?? telemetry?.temperature ?? 0;
@@ -99,7 +99,16 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
                 : 'bg-slate-100 text-slate-600 border-slate-200'
             }`}
           >
-            加热模块: {isHeaterOn ? `输出 ${heaterPower}%` : '待机'}
+            加热模块: {isHeaterOn ? '加热中' : '待机'}
+          </span>
+          <span
+            className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border ${
+              isRelayOn
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : 'bg-slate-100 text-slate-600 border-slate-200'
+            }`}
+          >
+            控制继电器: {isRelayOn ? '闭合导通' : '断开隔离'}
           </span>
         </div>
       </div>
@@ -323,7 +332,7 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
                 strokeLinecap="round"
               />
               <text x="40" y="44" fill={isHeaterOn ? "#ea580c" : "#64748b"} fontSize="10" fontWeight="600" textAnchor="middle">
-                {isHeaterOn ? `加热 ${heaterPower}%` : '加热器 待机'}
+                {isHeaterOn ? '加热中' : '加热器 待机'}
               </text>
             </g>
 

@@ -11,6 +11,13 @@ export interface TelemetryData {
   timestamp: string;
 }
 
+export interface HistoryDateInfo {
+  date: string; // YYYY-MM-DD
+  count: number; // 记录条数
+  start_time: string;
+  end_time: string;
+}
+
 export interface DeviceState {
   auto_mode: boolean;
   pump_active: boolean;

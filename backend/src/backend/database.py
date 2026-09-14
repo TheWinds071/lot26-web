@@ -455,6 +455,35 @@ class DatabaseManager:
                 },
             }
 
+    def get_available_dates(self) -> List[Dict[str, Any]]:
+        """Returns distinct dates from telemetry_history with record count and time range."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT
+                    substr(timestamp, 1, 10) as date_str,
+                    COUNT(*) as count,
+                    MIN(timestamp) as start_time,
+                    MAX(timestamp) as end_time
+                FROM telemetry_history
+                WHERE timestamp IS NOT NULL AND length(timestamp) >= 10
+                GROUP BY substr(timestamp, 1, 10)
+                ORDER BY date_str DESC
+                """
+            )
+            rows = cursor.fetchall()
+            return [
+                {
+                    "date": r["date_str"],
+                    "count": r["count"],
+                    "start_time": r["start_time"],
+                    "end_time": r["end_time"],
+                }
+                for r in rows
+                if r["date_str"]
+            ]
+
     def insert_or_update_alarm(self, alarm: AlarmEvent) -> None:
         """Inserts or updates an alarm event record."""
         ts_str = self._format_datetime(alarm.timestamp)

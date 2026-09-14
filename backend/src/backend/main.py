@@ -159,6 +159,13 @@ async def get_history_stats(
     return state_manager.get_history_stats(start_time=start_time, end_time=end_time)
 
 
+@app.get("/api/history/dates")
+async def get_history_dates():
+    """Returns list of distinct dates with telemetry data stored in SQLite."""
+    dates = state_manager.get_available_dates()
+    return {"status": "ok", "dates": dates}
+
+
 @app.get("/api/history/export")
 async def export_history_csv(
     start_time: Optional[str] = None,

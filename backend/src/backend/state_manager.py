@@ -678,6 +678,10 @@ class StateManager:
         """Returns total count of persistent records from SQLite."""
         return self.db.get_telemetry_count(start_time=start_time, end_time=end_time)
 
+    def get_available_dates(self) -> List[dict]:
+        """Returns distinct dates from SQLite with record count and time range."""
+        return self.db.get_available_dates()
+
     def export_history_csv(
         self,
         start_time: Optional[str] = None,

@@ -8,7 +8,7 @@ import {
   Trash2,
   TrendingUp,
 } from 'lucide-react';
-import type { TelemetryData } from '../types';
+import type { HistoryDateInfo, TelemetryData } from '../types';
 
 interface RealtimeChartsProps {
   history: TelemetryData[];
@@ -19,7 +19,26 @@ interface RealtimeChartsProps {
   onClearHistory?: () => void;
 }
 
-const formatTime = (ts?: string, index?: number): string => {
+const formatDateOnly = (ts?: string): string => {
+  if (!ts) return '';
+  if (ts.length >= 10 && (ts[4] === '-' || ts[4] === '/')) {
+    return ts.slice(0, 10).replace(/\//g, '-');
+  }
+  try {
+    const d = new Date(ts);
+    if (!isNaN(d.getTime())) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+  } catch {
+    // fallback
+  }
+  return '';
+};
+
+const formatTimeOnly = (ts?: string, index?: number): string => {
   if (!ts) return index !== undefined ? `#${index + 1}` : '';
   try {
     const d = new Date(ts);
@@ -33,6 +52,66 @@ const formatTime = (ts?: string, index?: number): string => {
     return ts.slice(11, 19);
   }
   return ts;
+};
+
+const formatFullDateTime = (ts?: string, index?: number): string => {
+  if (!ts) return index !== undefined ? `#${index + 1}` : '';
+  try {
+    const d = new Date(ts);
+    if (!isNaN(d.getTime())) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const time = d.toTimeString().slice(0, 8);
+      return `${y}-${m}-${day} ${time}`;
+    }
+  } catch {
+    // fallback
+  }
+  if (ts.length >= 19 && ts.includes('T')) {
+    return `${ts.slice(0, 10)} ${ts.slice(11, 19)}`;
+  }
+  return ts;
+};
+
+const formatMonthDayTime = (ts?: string, index?: number): string => {
+  if (!ts) return index !== undefined ? `#${index + 1}` : '';
+  try {
+    const d = new Date(ts);
+    if (!isNaN(d.getTime())) {
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const time = d.toTimeString().slice(0, 8);
+      return `${m}-${day} ${time}`;
+    }
+  } catch {
+    // fallback
+  }
+  if (ts.length >= 19 && ts.includes('T')) {
+    return `${ts.slice(5, 10)} ${ts.slice(11, 19)}`;
+  }
+  return ts;
+};
+
+const formatSmartTick = (ts?: string, isMultiDay?: boolean, index?: number): string => {
+  if (!ts) return index !== undefined ? `#${index + 1}` : '';
+  if (isMultiDay) {
+    try {
+      const d = new Date(ts);
+      if (!isNaN(d.getTime())) {
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        const hm = d.toTimeString().slice(0, 5);
+        return `${m}-${day} ${hm}`;
+      }
+    } catch {
+      // fallback
+    }
+    if (ts.length >= 16 && ts.includes('T')) {
+      return `${ts.slice(5, 10)} ${ts.slice(11, 16)}`;
+    }
+  }
+  return formatTimeOnly(ts, index);
 };
 
 interface SingleChartProps {
@@ -54,6 +133,8 @@ interface SingleChartProps {
   onPan?: (newStart: number, newEnd: number) => void;
   onWheelZoom?: (deltaY: number, mouseRatio: number) => void;
   onResetZoom?: () => void;
+  isMultiDay?: boolean;
+  dayBoundaries?: { index: number; date: string }[];
 }
 
 const SingleChartItem: React.FC<SingleChartProps> = ({
@@ -75,6 +156,8 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
   onPan,
   onWheelZoom,
   onResetZoom,
+  isMultiDay,
+  dayBoundaries,
 }) => {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
@@ -288,11 +371,18 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
   const hoveredVal =
     hoveredPoint !== null ? hoveredPoint[dataKey] ?? hoveredPoint.temperature ?? 0 : null;
   const displayVal = hoveredVal !== null ? hoveredVal : latestVal;
-  const hoveredTime = hoveredPoint ? formatTime(hoveredPoint.timestamp, activeIndex!) : '';
+  const hoveredTime = hoveredPoint ? formatTimeOnly(hoveredPoint.timestamp, activeIndex!) : '';
+  const hoveredDate = hoveredPoint ? formatDateOnly(hoveredPoint.timestamp) : '';
+  const hoveredFullTime = hoveredPoint ? formatFullDateTime(hoveredPoint.timestamp, activeIndex!) : '';
+  const hoveredDisplayTime = isMultiDay
+    ? hoveredPoint
+      ? formatMonthDayTime(hoveredPoint.timestamp, activeIndex!)
+      : ''
+    : hoveredTime;
 
   // Tooltip position calculations
-  const tooltipW = 100;
-  const tooltipH = 46;
+  const tooltipW = 145;
+  const tooltipH = 50;
   let tooltipX = 0;
   let tooltipY = 0;
   let activePointX = 0;
@@ -303,6 +393,7 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
     activePointY = getY(hoveredVal);
     const isRightSide = activePointX + tooltipW + 12 > width - padding.right;
     tooltipX = isRightSide ? activePointX - tooltipW - 10 : activePointX + 10;
+    tooltipX = Math.max(padding.left, Math.min(width - padding.right - tooltipW, tooltipX));
     tooltipY = Math.max(
       padding.top,
       Math.min(padding.top + chartHeight - tooltipH, activePointY - tooltipH / 2)
@@ -323,15 +414,15 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
           <span className="text-xs font-semibold text-gray-800">{title}</span>
           {isDragging ? (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-600 text-white font-semibold animate-pulse shadow-2xs">
-              无极平移: {hoveredTime}
+              无极平移: {hoveredDisplayTime}
             </span>
           ) : hoverIndex !== null ? (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-medium">
-              悬停: {hoveredTime}
+              悬停: {hoveredDisplayTime}
             </span>
           ) : activeTimelineIndex !== undefined && hoveredPoint ? (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 font-medium">
-              定位: {hoveredTime}
+              定位: {hoveredDisplayTime}
             </span>
           ) : null}
         </div>
@@ -412,7 +503,7 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
               Math.max(0, Math.round(curStart + pct * curSpan))
             );
             const x = padding.left + pct * chartWidth;
-            const timeStr = formatTime(dataPoints[dataIdx]?.timestamp, dataIdx);
+            const timeStr = formatSmartTick(dataPoints[dataIdx]?.timestamp, isMultiDay, dataIdx);
             const textAnchor = idx === 0 ? 'start' : idx === 4 ? 'end' : 'middle';
             return (
               <g key={`x-tick-${pct}`} pointerEvents="none">
@@ -433,6 +524,48 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
                   textAnchor={textAnchor}
                 >
                   {timeStr}
+                </text>
+              </g>
+            );
+          })}
+
+        {/* Day boundary indicators when crossing dates */}
+        {dayBoundaries &&
+          dayBoundaries.map((b) => {
+            if (b.index < curStart || b.index > curEnd) return null;
+            const bx = getX(b.index);
+            return (
+              <g key={`day-boundary-${b.index}`} pointerEvents="none">
+                <line
+                  x1={bx}
+                  y1={padding.top}
+                  x2={bx}
+                  y2={padding.top + chartHeight}
+                  stroke="#6366f1"
+                  strokeWidth="1.5"
+                  strokeDasharray="4 3"
+                  opacity="0.75"
+                />
+                <rect
+                  x={bx - 26}
+                  y={padding.top + 4}
+                  width={52}
+                  height={15}
+                  rx="3"
+                  fill="#eef2ff"
+                  stroke="#c7d2fe"
+                  strokeWidth="1"
+                />
+                <text
+                  x={bx}
+                  y={padding.top + 15}
+                  fill="#4338ca"
+                  fontSize="9"
+                  fontWeight="bold"
+                  fontFamily="ui-monospace, Consolas, monospace"
+                  textAnchor="middle"
+                >
+                  {b.date.slice(5)} 00:00
                 </text>
               </g>
             );
@@ -551,21 +684,29 @@ const SingleChartItem: React.FC<SingleChartProps> = ({
                 strokeWidth="1"
                 filter={`url(#tooltip-shadow-${dataKey})`}
               />
-              {/* Tooltip Timestamp */}
+              {/* Tooltip Timestamp: Date & Time */}
               <text
                 x="8"
-                y="15"
-                fill="#94a3b8"
+                y="16"
                 fontSize="10"
                 fontFamily="ui-monospace, Consolas, monospace"
               >
-                {hoveredTime}
+                {hoveredDate ? (
+                  <>
+                    <tspan fill={isMultiDay ? '#38bdf8' : '#94a3b8'} fontWeight={isMultiDay ? 'bold' : 'normal'}>
+                      {hoveredDate}
+                    </tspan>
+                    <tspan fill="#94a3b8"> {hoveredTime}</tspan>
+                  </>
+                ) : (
+                  <tspan fill="#94a3b8">{hoveredFullTime}</tspan>
+                )}
               </text>
               {/* Tooltip Value */}
-              <circle cx="12" cy="30" r="3.5" fill={color} />
+              <circle cx="12" cy="33" r="3.5" fill={color} />
               <text
                 x="20"
-                y="34"
+                y="37"
                 fill="#f8fafc"
                 fontSize="12"
                 fontWeight="bold"
@@ -594,6 +735,8 @@ interface DualTempChartProps {
   onPan?: (newStart: number, newEnd: number) => void;
   onWheelZoom?: (deltaY: number, mouseRatio: number) => void;
   onResetZoom?: () => void;
+  isMultiDay?: boolean;
+  dayBoundaries?: { index: number; date: string }[];
 }
 
 const DualTempChartItem: React.FC<DualTempChartProps> = ({
@@ -609,6 +752,8 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
   onPan,
   onWheelZoom,
   onResetZoom,
+  isMultiDay,
+  dayBoundaries,
 }) => {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
@@ -813,11 +958,18 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
     hoveredPoint ? hoveredPoint.temp_tank1 ?? hoveredPoint.temperature ?? 0 : latest1;
   const hovered2 =
     hoveredPoint ? hoveredPoint.temp_tank2 ?? hoveredPoint.temperature ?? 0 : latest2;
-  const hoveredTime = hoveredPoint ? formatTime(hoveredPoint.timestamp, activeIndex!) : '';
+  const hoveredTime = hoveredPoint ? formatTimeOnly(hoveredPoint.timestamp, activeIndex!) : '';
+  const hoveredDate = hoveredPoint ? formatDateOnly(hoveredPoint.timestamp) : '';
+  const hoveredFullTime = hoveredPoint ? formatFullDateTime(hoveredPoint.timestamp, activeIndex!) : '';
+  const hoveredDisplayTime = isMultiDay
+    ? hoveredPoint
+      ? formatMonthDayTime(hoveredPoint.timestamp, activeIndex!)
+      : ''
+    : hoveredTime;
   const currentDiff = Math.abs(hovered1 - hovered2);
 
-  const tooltipW = 125;
-  const tooltipH = 58;
+  const tooltipW = 145;
+  const tooltipH = 68;
   let tooltipX = 0;
   let tooltipY = 0;
   let activePointX = 0;
@@ -830,6 +982,7 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
     activePointY2 = getY(hovered2);
     const isRightSide = activePointX + tooltipW + 12 > width - padding.right;
     tooltipX = isRightSide ? activePointX - tooltipW - 10 : activePointX + 10;
+    tooltipX = Math.max(padding.left, Math.min(width - padding.right - tooltipW, tooltipX));
     const midY = (activePointY1 + activePointY2) / 2;
     tooltipY = Math.max(
       padding.top,
@@ -844,15 +997,15 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
           <span className="text-xs font-semibold text-gray-800">双水槽温度对比</span>
           {isDragging ? (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-600 text-white font-semibold animate-pulse shadow-2xs">
-              无极平移: {hoveredTime}
+              无极平移: {hoveredDisplayTime}
             </span>
           ) : hoverIndex !== null ? (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-medium">
-              悬停: {hoveredTime}
+              悬停: {hoveredDisplayTime}
             </span>
           ) : activeTimelineIndex !== undefined && hoveredPoint ? (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 font-medium">
-              定位: {hoveredTime}
+              定位: {hoveredDisplayTime}
             </span>
           ) : null}
           <span className="flex items-center gap-1 text-[11px] text-amber-700">
@@ -934,7 +1087,7 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
               Math.max(0, Math.round(curStart + pct * curSpan))
             );
             const x = padding.left + pct * chartWidth;
-            const timeStr = formatTime(dataPoints[dataIdx]?.timestamp, dataIdx);
+            const timeStr = formatSmartTick(dataPoints[dataIdx]?.timestamp, isMultiDay, dataIdx);
             const textAnchor = idx === 0 ? 'start' : idx === 4 ? 'end' : 'middle';
             return (
               <g key={`x-tick-dual-${pct}`} pointerEvents="none">
@@ -955,6 +1108,48 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
                   textAnchor={textAnchor}
                 >
                   {timeStr}
+                </text>
+              </g>
+            );
+          })}
+
+        {/* Day boundary indicators when crossing dates */}
+        {dayBoundaries &&
+          dayBoundaries.map((b) => {
+            if (b.index < curStart || b.index > curEnd) return null;
+            const bx = getX(b.index);
+            return (
+              <g key={`day-boundary-dual-${b.index}`} pointerEvents="none">
+                <line
+                  x1={bx}
+                  y1={padding.top}
+                  x2={bx}
+                  y2={padding.top + chartHeight}
+                  stroke="#6366f1"
+                  strokeWidth="1.5"
+                  strokeDasharray="4 3"
+                  opacity="0.75"
+                />
+                <rect
+                  x={bx - 26}
+                  y={padding.top + 4}
+                  width={52}
+                  height={15}
+                  rx="3"
+                  fill="#eef2ff"
+                  stroke="#c7d2fe"
+                  strokeWidth="1"
+                />
+                <text
+                  x={bx}
+                  y={padding.top + 15}
+                  fill="#4338ca"
+                  fontSize="9"
+                  fontWeight="bold"
+                  fontFamily="ui-monospace, Consolas, monospace"
+                  textAnchor="middle"
+                >
+                  {b.date.slice(5)} 00:00
                 </text>
               </g>
             );
@@ -1111,29 +1306,38 @@ const DualTempChartItem: React.FC<DualTempChartProps> = ({
                 strokeWidth="1"
                 filter="url(#tooltip-shadow-dual)"
               />
+              {/* Tooltip Timestamp: Date & Time */}
               <text
                 x="8"
-                y="14"
-                fill="#94a3b8"
+                y="16"
                 fontSize="10"
                 fontFamily="ui-monospace, Consolas, monospace"
               >
-                {hoveredTime}
+                {hoveredDate ? (
+                  <>
+                    <tspan fill={isMultiDay ? '#38bdf8' : '#94a3b8'} fontWeight={isMultiDay ? 'bold' : 'normal'}>
+                      {hoveredDate}
+                    </tspan>
+                    <tspan fill="#94a3b8"> {hoveredTime}</tspan>
+                  </>
+                ) : (
+                  <tspan fill="#94a3b8">{hoveredFullTime}</tspan>
+                )}
               </text>
-              <circle cx="12" cy="27" r="3" fill="#f59e0b" />
+              <circle cx="12" cy="33" r="3" fill="#f59e0b" />
               <text
                 x="20"
-                y="31"
+                y="37"
                 fill="#f8fafc"
                 fontSize="11"
                 fontFamily="ui-monospace, Consolas, monospace"
               >
                 水槽1: {hovered1.toFixed(1)}°C
               </text>
-              <circle cx="12" cy="43" r="3" fill="#ea580c" />
+              <circle cx="12" cy="50" r="3" fill="#ea580c" />
               <text
                 x="20"
-                y="47"
+                y="54"
                 fill="#f8fafc"
                 fontSize="11"
                 fontFamily="ui-monospace, Consolas, monospace"
@@ -1159,13 +1363,39 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
   const [activeTab, setActiveTab] = useState<'all' | 't1' | 't2' | 'pressure' | 'flow'>('all');
   const [viewMode, setViewMode] = useState<'live' | 'history'>('live');
   const [historicalData, setHistoricalData] = useState<TelemetryData[]>([]);
+  const [availableDates, setAvailableDates] = useState<HistoryDateInfo[]>([]);
+  const [selectedDate, setSelectedDate] = useState<string>('all'); // 'all' or 'YYYY-MM-DD'
   const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(false);
+  const [isLoadingDates, setIsLoadingDates] = useState<boolean>(false);
   const [isClearingHistory, setIsClearingHistory] = useState<boolean>(false);
   const [timelineIndex, setTimelineIndex] = useState<number>(0);
   const [showCustomFilter, setShowCustomFilter] = useState<boolean>(false);
   const [customStart, setCustomStart] = useState<string>('');
   const [customEnd, setCustomEnd] = useState<string>('');
   const [viewRange, setViewRange] = useState<{ start: number; end: number } | null>(null);
+
+  const getTodayDateStr = (): string => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  const fetchAvailableDates = async () => {
+    setIsLoadingDates(true);
+    try {
+      const res = await fetch('/api/history/dates');
+      if (res.ok) {
+        const json = await res.json();
+        setAvailableDates(json.dates || []);
+      }
+    } catch (e) {
+      console.error('Failed to query available dates from SQLite:', e);
+    } finally {
+      setIsLoadingDates(false);
+    }
+  };
 
   const fetchHistoricalRecords = async (start?: string, end?: string) => {
     setIsLoadingHistory(true);
@@ -1201,6 +1431,43 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
     }
   };
 
+  const handleSelectDate = (dateStr: string) => {
+    setSelectedDate(dateStr);
+    if (dateStr === 'all') {
+      setCustomStart('');
+      setCustomEnd('');
+      fetchHistoricalRecords();
+    } else {
+      const start = `${dateStr}T00:00:00`;
+      const end = `${dateStr}T23:59:59`;
+      setCustomStart(start.slice(0, 16));
+      setCustomEnd(end.slice(0, 16));
+      fetchHistoricalRecords(start, end);
+    }
+  };
+
+  const handlePrevDay = () => {
+    const baseDate = selectedDate !== 'all' ? selectedDate : (availableDates[0]?.date || getTodayDateStr());
+    const d = new Date(baseDate);
+    if (isNaN(d.getTime())) return;
+    d.setDate(d.getDate() - 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    handleSelectDate(`${y}-${m}-${day}`);
+  };
+
+  const handleNextDay = () => {
+    const baseDate = selectedDate !== 'all' ? selectedDate : (availableDates[0]?.date || getTodayDateStr());
+    const d = new Date(baseDate);
+    if (isNaN(d.getTime())) return;
+    d.setDate(d.getDate() + 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    handleSelectDate(`${y}-${m}-${day}`);
+  };
+
   const handleClearDatabaseHistory = async () => {
     const confirmed = window.confirm(
       '⚠️ 确定要清空数据库中的所有历史遥测数据吗？\n\n此操作将永久删除 SQLite 数据库中记录的所有传感器历史数据，清空后无法恢复。'
@@ -1212,10 +1479,12 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
       const res = await fetch('/api/history', { method: 'DELETE' });
       if (res.ok) {
         setHistoricalData([]);
+        setSelectedDate('all');
         setViewRange(null);
         setTimelineIndex(0);
         onHistoricalFrameSelect?.(null);
         onClearHistory?.();
+        await fetchAvailableDates();
         await fetchHistoricalRecords();
       } else {
         alert('清空历史数据失败，请检查后端服务状态。');
@@ -1230,8 +1499,13 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
 
   const handleSwitchToHistory = () => {
     setViewMode('history');
+    fetchAvailableDates();
     if (historicalData.length === 0) {
-      fetchHistoricalRecords();
+      if (selectedDate !== 'all') {
+        fetchHistoricalRecords(`${selectedDate}T00:00:00`, `${selectedDate}T23:59:59`);
+      } else {
+        fetchHistoricalRecords();
+      }
     } else {
       const idx = Math.min(timelineIndex, historicalData.length - 1);
       onHistoricalFrameSelect?.(historicalData[idx]);
@@ -1259,6 +1533,25 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
     : viewMode === 'history'
     ? historicalData
     : history.slice(-40);
+
+  const isMultiDay = useMemo(() => {
+    if (dataPoints.length <= 1) return false;
+    const firstDate = formatDateOnly(dataPoints[0]?.timestamp);
+    const lastDate = formatDateOnly(dataPoints[dataPoints.length - 1]?.timestamp);
+    return Boolean(firstDate && lastDate && firstDate !== lastDate);
+  }, [dataPoints]);
+
+  const dayBoundaries = useMemo(() => {
+    const boundaries: { index: number; date: string }[] = [];
+    for (let i = 1; i < dataPoints.length; i++) {
+      const dPrev = formatDateOnly(dataPoints[i - 1]?.timestamp);
+      const dCurr = formatDateOnly(dataPoints[i]?.timestamp);
+      if (dPrev && dCurr && dPrev !== dCurr) {
+        boundaries.push({ index: i, date: dCurr });
+      }
+    }
+    return boundaries;
+  }, [dataPoints]);
 
   const totalPoints = dataPoints.length;
   const visibleStart = viewRange
@@ -1509,20 +1802,25 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
           {viewMode === 'history' && !isPlayback && (
             <div className="flex items-center gap-2 ml-auto sm:ml-0 flex-wrap">
               <button
-                onClick={() =>
-                  fetchHistoricalRecords(
-                    customStart || undefined,
-                    customEnd || undefined
-                  )
-                }
-                disabled={isLoadingHistory}
+                onClick={() => {
+                  fetchAvailableDates();
+                  if (selectedDate !== 'all') {
+                    fetchHistoricalRecords(`${selectedDate}T00:00:00`, `${selectedDate}T23:59:59`);
+                  } else {
+                    fetchHistoricalRecords(
+                      customStart || undefined,
+                      customEnd || undefined
+                    );
+                  }
+                }}
+                disabled={isLoadingHistory || isLoadingDates}
                 className="inline-flex items-center justify-center p-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs disabled:opacity-50 cursor-pointer"
-                title="刷新历史数据"
+                title="刷新历史数据与日期索引"
                 aria-label="刷新历史数据"
               >
                 <RefreshCw
                   className={`w-3.5 h-3.5 ${
-                    isLoadingHistory ? 'animate-spin text-indigo-600' : ''
+                    isLoadingHistory || isLoadingDates ? 'animate-spin text-indigo-600' : ''
                   }`}
                 />
               </button>
@@ -1543,8 +1841,13 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
                 onClick={() => {
                   let exportUrl = '/api/history/export';
                   const params = new URLSearchParams();
-                  if (customStart) params.append('start_time', customStart);
-                  if (customEnd) params.append('end_time', customEnd);
+                  if (selectedDate !== 'all') {
+                    params.append('start_time', `${selectedDate}T00:00:00`);
+                    params.append('end_time', `${selectedDate}T23:59:59`);
+                  } else {
+                    if (customStart) params.append('start_time', customStart);
+                    if (customEnd) params.append('end_time', customEnd);
+                  }
                   if (params.toString()) exportUrl += `?${params.toString()}`;
                   window.open(exportUrl, '_blank');
                 }}
@@ -1560,15 +1863,122 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
                     ? 'bg-indigo-50 text-indigo-700 border-indigo-300'
                     : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                 }`}
-                title="按时间段筛选"
+                title="高级时间范围精确筛选"
               >
                 <Calendar className="w-3.5 h-3.5" />
-                时间筛选
+                高级筛选
               </button>
             </div>
           )}
         </div>
       </div>
+
+      {/* Date Navigation & Selector Toolbar */}
+      {!isPlayback && viewMode === 'history' && (
+        <div className="mb-3.5 bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+          {/* Left: Date Selector & Quick Controls */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold text-slate-700 flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-indigo-600" />
+              日期切换:
+            </span>
+
+            {/* Date Select Dropdown */}
+            <select
+              value={selectedDate}
+              onChange={(e) => handleSelectDate(e.target.value)}
+              className="bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-medium text-slate-800 focus:outline-indigo-500 shadow-2xs cursor-pointer hover:border-slate-400 transition-colors"
+            >
+              <option value="all">全部历史时序 ({availableDates.reduce((s, d) => s + d.count, 0) || historicalData.length} 帧)</option>
+              {availableDates.map((d) => (
+                <option key={d.date} value={d.date}>
+                  {d.date} ({d.count} 帧)
+                </option>
+              ))}
+              {selectedDate !== 'all' && !availableDates.some((d) => d.date === selectedDate) && (
+                <option value={selectedDate}>{selectedDate} (指定日期)</option>
+              )}
+            </select>
+
+            {/* Direct Calendar Date Input */}
+            <div className="flex items-center gap-1">
+              <input
+                type="date"
+                value={selectedDate === 'all' ? '' : selectedDate}
+                onChange={(e) => {
+                  if (e.target.value) handleSelectDate(e.target.value);
+                }}
+                className="bg-white border border-slate-300 rounded-lg px-2 py-0.5 text-xs text-slate-700 focus:outline-indigo-500 shadow-2xs cursor-pointer hover:border-slate-400"
+                title="按日历选择指定日期"
+              />
+            </div>
+
+            {/* Quick Prev/Next Day buttons */}
+            <div className="inline-flex items-center rounded-lg border border-slate-200 bg-white p-0.5 shadow-2xs">
+              <button
+                onClick={handlePrevDay}
+                disabled={isLoadingHistory}
+                className="px-2 py-1 text-xs text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors disabled:opacity-40"
+                title="切换至前一天"
+              >
+                ◀ 前一天
+              </button>
+              <span className="w-px h-3 bg-slate-200"></span>
+              <button
+                onClick={handleNextDay}
+                disabled={isLoadingHistory}
+                className="px-2 py-1 text-xs text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors disabled:opacity-40"
+                title="切换至后一天"
+              >
+                后一天 ▶
+              </button>
+            </div>
+
+            {/* Quick shortcut: Today */}
+            <button
+              onClick={() => handleSelectDate(getTodayDateStr())}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors shadow-2xs ${
+                selectedDate === getTodayDateStr()
+                  ? 'bg-indigo-600 text-white border-indigo-600'
+                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              今天
+            </button>
+
+            {selectedDate !== 'all' && (
+              <button
+                onClick={() => handleSelectDate('all')}
+                className="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-200 text-slate-700 hover:bg-slate-300 transition-colors"
+                title="恢复查看数据库内所有日期的全量历史记录"
+              >
+                全部时序
+              </button>
+            )}
+          </div>
+
+          {/* Right: Current Active Date & Stats Badge */}
+          <div className="flex items-center gap-2 text-[11px] text-slate-500">
+            {selectedDate !== 'all' ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 font-medium">
+                <Calendar className="w-3.5 h-3.5 text-indigo-500" />
+                当前日期: <strong className="font-mono text-indigo-900">{selectedDate}</strong>
+                <span>(共 {historicalData.length} 帧)</span>
+              </span>
+            ) : isMultiDay ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-medium">
+                <Calendar className="w-3.5 h-3.5 text-amber-500" />
+                全部时序 {availableDates.length > 0 ? `(跨越 ${availableDates.length} 个自然日)` : '(跨自然日)'}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 border border-slate-200 font-medium">
+                <Database className="w-3.5 h-3.5 text-slate-500" />
+                全部历史记录 (共 {historicalData.length} 帧)
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Custom Time Range Filter Accordion */}
       {!isPlayback && viewMode === 'history' && showCustomFilter && (
@@ -1620,14 +2030,23 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
       {(viewMode === 'history' || isPlayback) && stats && (
         <div className="mb-4 bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-700">
           <div className="flex flex-wrap items-center justify-between gap-2 mb-2 pb-1.5 border-b border-slate-200/80">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="font-semibold text-slate-900 flex items-center gap-1.5">
                 <Database className="w-3.5 h-3.5 text-indigo-600" />
                 历史时序跨度 ({stats.count} 帧):
               </span>
-              <span className="font-mono text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">
-                {formatTime(stats.startTime)} ~ {formatTime(stats.endTime)}
+              <span className="font-mono text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-200 font-medium">
+                {formatFullDateTime(stats.startTime)} ~ {formatFullDateTime(stats.endTime)}
               </span>
+              {selectedDate !== 'all' ? (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 border border-indigo-200 font-medium">
+                  {selectedDate}
+                </span>
+              ) : isMultiDay ? (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200 font-medium">
+                  跨自然日
+                </span>
+              ) : null}
             </div>
             <span className="text-[11px] text-slate-500">
               数据源: SQLite 嵌入式数据库
@@ -1711,7 +2130,7 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
             onClick={() => {
               setCustomStart('');
               setCustomEnd('');
-              fetchHistoricalRecords();
+              handleSelectDate('all');
             }}
             className="mt-3 px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-medium"
           >
@@ -1740,6 +2159,8 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
               onPan={handlePan}
               onWheelZoom={handleWheelZoom}
               onResetZoom={handleResetZoom}
+              isMultiDay={isMultiDay}
+              dayBoundaries={dayBoundaries}
             />
           )}
           {activeTab === 't1' && (
@@ -1762,6 +2183,8 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
               onPan={handlePan}
               onWheelZoom={handleWheelZoom}
               onResetZoom={handleResetZoom}
+              isMultiDay={isMultiDay}
+              dayBoundaries={dayBoundaries}
             />
           )}
           {activeTab === 't2' && (
@@ -1784,6 +2207,8 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
               onPan={handlePan}
               onWheelZoom={handleWheelZoom}
               onResetZoom={handleResetZoom}
+              isMultiDay={isMultiDay}
+              dayBoundaries={dayBoundaries}
             />
           )}
 
@@ -1810,6 +2235,8 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
                 onPan={handlePan}
                 onWheelZoom={handleWheelZoom}
                 onResetZoom={handleResetZoom}
+                isMultiDay={isMultiDay}
+                dayBoundaries={dayBoundaries}
               />
             );
           })()}
@@ -1837,6 +2264,8 @@ export const RealtimeCharts: React.FC<RealtimeChartsProps> = ({
                 onPan={handlePan}
                 onWheelZoom={handleWheelZoom}
                 onResetZoom={handleResetZoom}
+                isMultiDay={isMultiDay}
+                dayBoundaries={dayBoundaries}
               />
             );
           })()}

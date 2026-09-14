@@ -78,21 +78,20 @@
           status: 'ACK', // 确认标识：ACK 或 ERROR
           cmd: 'HEATER_CONTROL', // 执行器控制主令类型
           heater_active: false, // 加热模块启停状态 (true: 运行, false: 停止)
-          heater_power: 0, // 加热模块输出功率百分比 (0 - 100%)
           pump_active: false, // 双向水泵启停状态 (true: 运行, false: 停止)
           pump_speed: 60, // 水泵转速百分比 (0 - 100%)
           pump_direction: 'FORWARD', // 水泵流动方向: FORWARD (水槽1->2) 或 REVERSE (水槽2->1)
+          relay_active: false, // 控制继电器启闭状态 (true: 吸合/开启, false: 断开/关闭)
           emergency_stop: false, // 紧急急停锁定状态
           timestamp: 'ISO_8601_TIMESTAMP', // 下发时间戳
         },
         // 独立控制下行命令字典
         control_commands: {
           HEATER_CONTROL: {
-            description: '加热器开关与输出功率调节指令',
+            description: '加热器启停开关控制指令 (已取消功率调节，仅保留纯开关控制)',
             parameters: {
               cmd: 'HEATER_CONTROL',
               heater_active: 'boolean (true: 启动加热, false: 关闭加热)',
-              heater_power: 'integer (0-100, 功率占空比百分比)',
             },
           },
           PUMP_CONTROL: {
@@ -102,6 +101,13 @@
               pump_active: 'boolean (true: 启泵, false: 停泵)',
               pump_speed: 'integer (0-100, 转速百分比)',
               pump_direction: "string ('FORWARD': 水槽1➔水槽2, 'REVERSE': 水槽2➔水槽1)",
+            },
+          },
+          RELAY_CONTROL: {
+            description: '控制继电器启闭/吸合与断开控制指令',
+            parameters: {
+              cmd: 'RELAY_CONTROL',
+              relay_active: 'boolean (true: 继电器吸合/导通, false: 继电器断开/关断)',
             },
           },
           EMERGENCY_STOP: {
@@ -122,7 +128,7 @@
       push_events: [
         'init', // 首帧握手全量系统状态快照与历史时序列表
         'telemetry', // 实时遥测数据帧广播 (含双槽水温、水压、流速、设备状态)
-        'device_state_updated', // 水泵正反转、转速、加热器功率变更通知
+        'device_state_updated', // 水泵正反转、转速、加热器与继电器状态变更通知
         'mode_changed', // 自动控制 / 手动控制运行模式变更通知
         'thresholds_updated', // 自控控温与保护阈值修改广播
         'alarm', // 触发新告警事件广播
@@ -131,7 +137,8 @@
       client_actions: [
         'set_mode', // 前端切换自动/手动模式: { action: 'set_mode', auto_mode: true }
         'set_pump', // 前端控制水泵: { action: 'set_pump', active: true, speed: 80, direction: 'FORWARD' }
-        'set_heater', // 前端控制加热器: { action: 'set_heater', active: true, power: 100 }
+        'set_heater', // 前端控制加热器启闭: { action: 'set_heater', active: true }
+        'set_relay', // 前端控制继电器启闭: { action: 'set_relay', active: true }
         'set_emergency_stop', // 触发/解除急停: { action: 'set_emergency_stop', emergency_stop: true }
         'update_thresholds', // 更新控温与安全阈值: { action: 'update_thresholds', thresholds: { ... } }
         'reset_volume', // 重置累计流量与批次供水量: { action: 'reset_volume' }
@@ -256,12 +263,7 @@
       installation_position: '水槽 2 底部进出水循环导流槽内 (防涡流设计)',
       rated_power_watts: 2000.0, // 额定额定总功率: 2000W (2.0 kW)
       voltage_supply: 'AC 220V ± 10% / 50Hz 单相交流',
-      control_actuator_type: '无触点固态继电器 (SSR) + PWM 占空比脉冲调功',
-      power_regulation_range: {
-        min_percentage: 0, // 最小输出功率: 0% (完全断开)
-        max_percentage: 100, // 最大输出功率: 100% (全功率运行)
-        step_percentage: 1, // 调控步长百分比
-      },
+      control_actuator_type: '交流接触器 / 继电器纯开关控制 (已取消输出功率设定)',
       // 自控温控策略与阈值参数
       temperature_control_thresholds: {
         target_temperature_celsius: 55.0, // 恒温控制目标水温 T_target (°C)
@@ -277,6 +279,17 @@
         overpressure_trip_cutout: true, // 管道超压即刻联动切断加热
         emergency_stop_trip_cutout: true, // 外部急停即刻毫秒级切断加热
       },
+    },
+
+    // 4.3 槽区控制继电器配置 (Control Relay Configuration)
+    control_relay: {
+      relay_id: 'relay_tank2_01', // 继电器模块标识
+      device_name: '水槽 2 工艺控制继电器',
+      relay_type: '工业级电磁/固态隔离继电器 (常开触点 NO)',
+      contact_rating: 'AC 250V / 10A, DC 30V / 10A',
+      control_mode: 'MANUAL_CONTROL', // 手动远程切换
+      default_state: false, // 默认初始状态 (false: 断开/释放, true: 吸合/导通)
+      description: '用于水槽2工艺支路、辅热设备或外围执行器的通断控制',
     },
 
     // 4.3 水温监测与温度传感器配置 (Sensor 2)

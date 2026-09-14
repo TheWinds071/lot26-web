@@ -130,7 +130,7 @@ TCP 服务端默认监听端口：`8888`（可通过环境变量 `TCP_PORT` 自�
   "pump_speed": 60,
   "pump_direction": "FORWARD",
   "heater_active": true,
-  "heater_power": 100,
+  "relay_active": false,
   "emergency_stop": false,
   "auto_mode": true,
   "timestamp": "2026-08-29T14:02:06.057000"
@@ -283,7 +283,9 @@ uv run python simulator.py --interval 1.0
 
 ---
 
-#### (2) 点击加热模块开关与功率调节 (`Heater Control`)
+#### (2) 点击加热模块开关 (`Heater Control`)
+
+> 注：加热模块已取消输出功率调节设定，简化为纯启停开关控制。
 
 **途径 A：HTTP RESTful POST**
 - **请求地址**：`POST /api/control/heater`
@@ -291,20 +293,17 @@ uv run python simulator.py --interval 1.0
 - **请求 JSON 报文**：
   ```json
   {
-    "active": true,
-    "power": 100
+    "active": true
   }
   ```
   - `active` (`boolean`, 必填)：加热模块开关状态，`true` 为开启加热，`false` 为关闭加热。
-  - `power` (`integer`, 可选)：加热功率百分比，范围 `0` ~ `100`（开启默认 `100`，关闭设为 `0`）。
 
 **途径 B：WebSocket 双向通道 (`/ws/telemetry`)**
 - **发送 JSON 报文**：
   ```json
   {
     "action": "set_heater",
-    "active": true,
-    "power": 100
+    "active": true
   }
   ```
 
@@ -317,7 +316,7 @@ uv run python simulator.py --interval 1.0
     "pump_direction": "FORWARD",
     "pump_speed": 60,
     "heater_active": true,
-    "heater_power": 100,
+    "relay_active": false,
     "emergency_stop": false,
     "last_updated": "2026-09-08T16:35:00.123456"
   }
@@ -326,8 +325,53 @@ uv run python simulator.py --interval 1.0
   ```json
   {
     "cmd": "HEATER_CONTROL",
+    "heater_active": true
+  }
+  ```
+
+---
+
+#### (3) 点击控制继电器启闭 (`Relay Control`)
+
+**途径 A：HTTP RESTful POST**
+- **请求地址**：`POST /api/control/relay`
+- **请求头**：`Content-Type: application/json`
+- **请求 JSON 报文**：
+  ```json
+  {
+    "active": true
+  }
+  ```
+  - `active` (`boolean`, 必填)：继电器状态，`true` 为吸合/开启导通，`false` 为断开/关闭。
+
+**途径 B：WebSocket 双向通道 (`/ws/telemetry`)**
+- **发送 JSON 报文**：
+  ```json
+  {
+    "action": "set_relay",
+    "active": true
+  }
+  ```
+
+**服务端响应与执行器下行：**
+- **HTTP / WebSocket 响应的设备状态 JSON (`DeviceState`)**：
+  ```json
+  {
+    "auto_mode": false,
+    "pump_active": true,
+    "pump_direction": "FORWARD",
+    "pump_speed": 60,
     "heater_active": true,
-    "heater_power": 100
+    "relay_active": true,
+    "emergency_stop": false,
+    "last_updated": "2026-09-08T16:35:00.123456"
+  }
+  ```
+- **TCP 服务端向底层硬件/PLC 广播下发的控制指令 JSON**：
+  ```json
+  {
+    "cmd": "RELAY_CONTROL",
+    "relay_active": true
   }
   ```
 
@@ -337,6 +381,7 @@ uv run python simulator.py --interval 1.0
 
 - `GET /api/status`: 获取系统实时状态（含 telemetry、device_state、thresholds、active_alarms）
 - `GET /api/history`: 获取近期待渲染遥测历史记录（`?limit=120&from_db=false`）
+- `GET /api/history/dates`: 获取 SQLite 中存有数据的去重日期列表与帧数聚合
 - `GET /api/history/query`: 分页与按时间范围查询 SQLite 历史时序数据
 - `GET /api/history/stats`: 获取时序历史统计指标汇总（极值、均值等）
 - `GET /api/history/export`: 导出时序历史 CSV 报表
@@ -344,6 +389,10 @@ uv run python simulator.py --interval 1.0
 - `GET /api/alarms/history`: 获取 SQLite 持久化历史告警
 - `DELETE /api/alarms`: 清空告警记录
 - `POST /api/control/mode`: 切换模式 `{"auto_mode": true | false}`
+- `POST /api/control/pump`: 控制双向水泵 `{"active": true, "speed": 60, "direction": "FORWARD"}`
+- `POST /api/control/heater`: 启闭加热模块 `{"active": true | false}`
+- `POST /api/control/relay`: 启闭控制继电器 `{"active": true | false}`
+- `POST /api/control/reset-volume`: 清零当前批次累计流量
 - `POST /api/control/emergency_stop`: 触发/解除急停 `{"emergency_stop": true | false}`
 - `GET /api/config/thresholds`: 获取自控阈值规则
 - `POST /api/config/thresholds`: 更新并保存自控阈值规则

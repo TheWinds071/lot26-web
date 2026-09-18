@@ -243,7 +243,7 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
               <Droplets className="w-3 h-3" />
               <span className="font-mono font-semibold">{accumulatedVolume.toFixed(2)}</span>
               <span className="text-gray-400">/</span>
-              <span className="font-mono text-gray-600">{targetVolume.toFixed(1)}L</span>
+              <span className="font-mono text-gray-600">{targetVolume.toFixed(2)}L</span>
             </div>
           </div>
         </div>

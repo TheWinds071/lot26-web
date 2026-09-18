@@ -388,7 +388,7 @@ export const AlarmLogs: React.FC<AlarmLogsProps> = ({
 
                       {liveVal !== undefined && (
                         <div className="text-[11px] font-mono text-gray-500">
-                          实时: <span className="font-semibold text-gray-900">{liveVal.toFixed(1)}</span> {metricDef.unit}
+                          实时: <span className="font-semibold text-gray-900">{liveVal.toFixed(rule.metric === 'flow_rate' || rule.metric === 'accumulated_volume' ? 2 : 1)}</span> {metricDef.unit}
                         </div>
                       )}
                     </div>

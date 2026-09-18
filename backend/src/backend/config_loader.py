@@ -120,7 +120,7 @@ class ConfigLoader:
                 pressure_max=float(press_sensor.get("overpressure_alarm_threshold_pa", 800000.0)),
                 flow_rate_min=float(flow_sensor.get("min_flow_dry_run_threshold_lpm", 0.05)),
                 flow_rate_target=float(flow_sensor.get("target_flow_rate_lpm", 0.30)),
-                target_volume=float(volume_ctrl.get("target_volume_liters", 10.0)),
+                target_volume=round(float(volume_ctrl.get("target_volume_liters", 10.0)), 2),
                 volume_control_enabled=bool(volume_ctrl.get("enabled", True)),
             )
         except Exception as e:

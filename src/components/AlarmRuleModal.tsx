@@ -287,7 +287,7 @@ export const AlarmRuleModal: React.FC<AlarmRuleModalProps> = ({
                 <span>监控指标</span>
                 {liveVal !== undefined && (
                   <span className="text-[11px] font-mono text-blue-600 font-medium">
-                    当前: {liveVal.toFixed(1)} {currentDef.unit}
+                    当前: {liveVal.toFixed(currentDef.value === 'flow_rate' || currentDef.value === 'accumulated_volume' ? 2 : 1)} {currentDef.unit}
                   </span>
                 )}
               </label>

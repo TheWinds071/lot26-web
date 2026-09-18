@@ -407,7 +407,7 @@ class StateManager:
 
         # 3.8 Volume Batching / Target Volume Auto-Stop Pump Check
         target_vol = (
-            self.thresholds.target_volume
+            round(self.thresholds.target_volume, 2)
             if self.thresholds.target_volume is not None
             else 10.0
         )

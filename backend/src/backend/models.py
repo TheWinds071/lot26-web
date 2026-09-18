@@ -57,8 +57,12 @@ class ThresholdConfig(BaseModel):
     flow_rate_target: float = Field(default=0.30, description="Target flow rate (L/min)")
 
     # Volume / Batching rules (Liters)
-    target_volume: float = Field(default=10.0, description="Target batch water volume threshold in liters (L)")
+    target_volume: float = Field(default=10.00, description="Target batch water volume threshold in liters (L, 2 decimal places)")
     volume_control_enabled: bool = Field(default=True, description="Enable automatic pump stop when target volume is reached")
+
+    def model_post_init(self, __context):
+        if self.target_volume is not None:
+            self.target_volume = round(float(self.target_volume), 2)
 
 
 class AlarmEvent(BaseModel):

@@ -86,7 +86,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       pressure_max: Number(pressMax),
       flow_rate_min: Number(flowMin),
       flow_rate_target: Number(flowMin) <= 1.0 ? 0.30 : 25.0,
-      target_volume: Number(targetVolume),
+      target_volume: Math.round(Number(targetVolume) * 100) / 100,
       volume_control_enabled: Boolean(volumeControlEnabled),
     });
     setIsDirty(false);
@@ -588,8 +588,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               <div className="flex rounded-lg shadow-xs">
                 <input
                   type="number"
-                  step="0.1"
-                  min="0.1"
+                  step="0.01"
+                  min="0.01"
                   value={targetVolume}
                   onChange={(e) => {
                     setTargetVolume(Number(e.target.value));

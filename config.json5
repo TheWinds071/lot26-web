@@ -407,7 +407,7 @@
       // 定量供水与累计流量自动控制配置 (Volume Batching & Auto Pump Stop Control)
       volume_control: {
         enabled: true, // 是否启用定量控制功能 (达到设定水量时自动停泵)
-        target_volume_liters: 10.0, // 目标供水累计水量设定值 (升, L)
+        target_volume_liters: 10.00, // 目标供水累计水量设定值 (升, L，支持2位小数)
         auto_stop_pump: true, // 到达设定值时自动停止水泵
         unit: 'L',
       },

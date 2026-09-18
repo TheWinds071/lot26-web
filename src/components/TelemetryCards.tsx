@@ -36,18 +36,11 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
   const flowMin = thresholds?.flow_rate_min ?? 5.0;
 
   const targetVolume = thresholds?.target_volume ?? 10.0;
-  const forwardComp = thresholds?.forward_compensation_percent ?? 40;
-  const reverseComp = thresholds?.reverse_compensation_percent ?? 40;
   const accumulatedVolume = deviceState?.accumulated_volume ?? telemetry?.total_volume ?? 0;
   const isTargetReached = deviceState?.target_volume_reached ?? false;
 
   const pumpDirection = deviceState?.pump_direction ?? 'FORWARD';
   const isPumpActive = deviceState?.pump_active ?? false;
-  const isForward = pumpDirection === 'FORWARD';
-  const activeComp = isForward ? forwardComp : reverseComp;
-  const effectiveTargetVolume = activeComp > 0
-    ? Math.round(targetVolume * (1 + activeComp / 100) * 100) / 100
-    : targetVolume;
 
   // Temperature Status for Tank 1 (Storage Tank)
   let t1StatusText = "正常储水";
@@ -246,20 +239,11 @@ export const TelemetryCards: React.FC<TelemetryCardsProps> = ({
               </span>
               <span className="text-sm font-medium text-gray-500">L/min</span>
             </div>
-            <div
-              className="flex items-center gap-1 text-xs text-cyan-700 bg-cyan-50 px-2 py-0.5 rounded border border-cyan-200"
-              title={
-                activeComp > 0
-                  ? `当前为${isForward ? '正转' : '反转'}供水，内部补偿 +${activeComp}%（设定目标: ${targetVolume.toFixed(2)}L，实际补偿目标: ${effectiveTargetVolume.toFixed(2)}L）`
-                  : undefined
-              }
-            >
+            <div className="flex items-center gap-1 text-xs text-cyan-700 bg-cyan-50 px-2 py-0.5 rounded border border-cyan-200">
               <Droplets className="w-3 h-3" />
               <span className="font-mono font-semibold">{accumulatedVolume.toFixed(2)}</span>
               <span className="text-gray-400">/</span>
-              <span className="font-mono text-gray-600">
-                {activeComp > 0 ? `${effectiveTargetVolume.toFixed(2)}L` : `${targetVolume.toFixed(2)}L`}
-              </span>
+              <span className="font-mono text-gray-600">{targetVolume.toFixed(2)}L</span>
             </div>
           </div>
         </div>

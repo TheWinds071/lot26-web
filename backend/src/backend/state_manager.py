@@ -449,13 +449,11 @@ class StateManager:
             self.device_state.last_updated = datetime.now()
             action_taken = True
             if comp_pct > 0:
-                comp_desc = f"，含{dir_name}内部补偿 +{comp_pct:.0f}%，实际达标 {effective_target_vol:.2f} L"
                 logger.info(
                     f"[Volume Control] Target volume reached: {self.device_state.accumulated_volume:.2f}L >= "
                     f"{effective_target_vol:.2f}L (base {target_vol:.2f}L + {comp_pct:.1f}% {dir_name} comp) -> Auto stopped water pump!"
                 )
             else:
-                comp_desc = ""
                 logger.info(
                     f"[Volume Control] Target volume reached: {self.device_state.accumulated_volume:.2f}L >= "
                     f"{effective_target_vol:.2f}L -> Auto stopped water pump!"
@@ -465,7 +463,7 @@ class StateManager:
                 type="VOLUME_TARGET_REACHED",
                 message=(
                     f"定量供水已达标: 累计已流出 {self.device_state.accumulated_volume:.2f} L 水 "
-                    f"(设定目标 {target_vol:.2f} L{comp_desc})，水泵已自动停止。"
+                    f"(设定目标 {target_vol:.2f} L)，水泵已自动停止。"
                 ),
                 value=self.device_state.accumulated_volume,
             )

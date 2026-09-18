@@ -249,14 +249,6 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   </span>
                   <span className="text-gray-500">
                     设定目标: <span className="font-mono font-bold text-gray-800">{targetVolume.toFixed(2)}</span> L
-                    {activeCompPercent > 0 && (
-                      <span
-                        className="ml-1.5 text-[11px] font-mono text-cyan-700 font-medium"
-                        title={`${isForward ? '正转' : '反转'}内部补偿 +${activeCompPercent}%（源自 config.json5）`}
-                      >
-                        ({isForward ? '正' : '反'}补偿: {effectiveTargetVolume.toFixed(2)}L)
-                      </span>
-                    )}
                   </span>
                 </div>
                 <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
@@ -272,7 +264,6 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 <div className="flex justify-between text-[11px] text-gray-400 mt-1">
                   <span>
                     进度: {effectiveTargetVolume > 0 ? Math.min(100, Math.round((accumulatedVolume / effectiveTargetVolume) * 100)) : 0}%
-                    {activeCompPercent > 0 && ` (含${isForward ? '正转' : '反转'}+${activeCompPercent}%补偿)`}
                   </span>
                   <span>{volumeControlEnabled ? '⚡ 达标自动停泵已开启' : '⚠️ 定量自动停泵已关闭'}</span>
                 </div>
@@ -280,7 +271,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
               {targetVolumeReached && (
                 <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] leading-relaxed">
-                  ✅ <strong>定量供水已达标</strong>：已达到设定值 {accumulatedVolume.toFixed(2)} L（基础目标 {targetVolume.toFixed(2)} L{activeCompPercent > 0 ? `，含${isForward ? '正转' : '反转'}内部补偿+${activeCompPercent}%` : ''}），水泵已安全停止。点击启动水泵或清零可开始下一批次。
+                  ✅ <strong>定量供水已达标</strong>：已达到设定值 {targetVolume.toFixed(2)} L，水泵已安全停止。点击启动水泵或清零可开始下一批次。
                 </div>
               )}
             </div>
@@ -620,9 +611,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   L
                 </span>
               </div>
-              <span className="text-[11px] text-gray-500">
-                根据流量计检测流出水量达到此值时停泵（正转补偿 +{forwardCompPercent}% / 反转补偿 +{reverseCompPercent}%）
-              </span>
+              <span className="text-[11px] text-gray-500">根据流量计检测流出水量达到此值时停泵</span>
             </div>
 
             {/* Volume Control Switch */}

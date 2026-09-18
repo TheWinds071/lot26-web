@@ -67,6 +67,8 @@ export const App: React.FC = () => {
                 prevTh.flow_rate_min === nextTh.flow_rate_min &&
                 prevTh.flow_rate_target === nextTh.flow_rate_target &&
                 prevTh.target_volume === nextTh.target_volume &&
+                prevTh.forward_compensation_percent === nextTh.forward_compensation_percent &&
+                prevTh.reverse_compensation_percent === nextTh.reverse_compensation_percent &&
                 prevTh.volume_control_enabled === nextTh.volume_control_enabled;
 
               return {

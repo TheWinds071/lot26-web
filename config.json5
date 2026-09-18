@@ -408,6 +408,8 @@
       volume_control: {
         enabled: true, // 是否启用定量控制功能 (达到设定水量时自动停泵)
         target_volume_liters: 10.00, // 目标供水累计水量设定值 (升, L，支持2位小数)
+        forward_compensation_percent: 40.0, // 正转供水内部补偿百分比 (正转 水槽1➔2 时内部自动补偿多进入设定水量的百分比，如 40.0 表示多进 40% 水量)
+        reverse_compensation_percent: 40.0, // 反转供水内部补偿百分比 (反转 水槽2➔1 时内部自动补偿多进入设定水量的百分比，如 40.0 表示多进 40% 水量)
         auto_stop_pump: true, // 到达设定值时自动停止水泵
         unit: 'L',
       },

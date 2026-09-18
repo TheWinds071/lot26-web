@@ -417,26 +417,55 @@ class StateManager:
             else True
         )
 
+        # 正转/反转供水内部补偿：在设定水量基础上多进入指定百分比的水量（配置来自 config.json5 或 thresholds）
+        forward_comp_pct = (
+            self.thresholds.forward_compensation_percent
+            if getattr(self.thresholds, "forward_compensation_percent", None) is not None
+            else config_loader.forward_compensation_percent
+        )
+        reverse_comp_pct = (
+            self.thresholds.reverse_compensation_percent
+            if getattr(self.thresholds, "reverse_compensation_percent", None) is not None
+            else config_loader.reverse_compensation_percent
+        )
+
+        is_forward = self.device_state.pump_direction == "FORWARD"
+        comp_pct = forward_comp_pct if is_forward else reverse_comp_pct
+        dir_name = "正转" if is_forward else "反转"
+
+        if comp_pct > 0:
+            effective_target_vol = round(target_vol * (1.0 + comp_pct / 100.0), 2)
+        else:
+            effective_target_vol = target_vol
+
         if (
             vol_ctrl_enabled
             and self.device_state.pump_active
-            and target_vol > 0
-            and self.device_state.accumulated_volume >= target_vol
+            and effective_target_vol > 0
+            and self.device_state.accumulated_volume >= effective_target_vol
         ):
             self.device_state.pump_active = False
             self.device_state.target_volume_reached = True
             self.device_state.last_updated = datetime.now()
             action_taken = True
-            logger.info(
-                f"[Volume Control] Target volume reached: {self.device_state.accumulated_volume:.2f}L >= "
-                f"{target_vol:.2f}L -> Auto stopped water pump!"
-            )
+            if comp_pct > 0:
+                comp_desc = f"，含{dir_name}内部补偿 +{comp_pct:.0f}%，实际达标 {effective_target_vol:.2f} L"
+                logger.info(
+                    f"[Volume Control] Target volume reached: {self.device_state.accumulated_volume:.2f}L >= "
+                    f"{effective_target_vol:.2f}L (base {target_vol:.2f}L + {comp_pct:.1f}% {dir_name} comp) -> Auto stopped water pump!"
+                )
+            else:
+                comp_desc = ""
+                logger.info(
+                    f"[Volume Control] Target volume reached: {self.device_state.accumulated_volume:.2f}L >= "
+                    f"{effective_target_vol:.2f}L -> Auto stopped water pump!"
+                )
             self.add_alarm(
                 level="INFO",
                 type="VOLUME_TARGET_REACHED",
                 message=(
                     f"定量供水已达标: 累计已流出 {self.device_state.accumulated_volume:.2f} L 水 "
-                    f"(设定目标 {target_vol:.2f} L)，水泵已自动停止。"
+                    f"(设定目标 {target_vol:.2f} L{comp_desc})，水泵已自动停止。"
                 ),
                 value=self.device_state.accumulated_volume,
             )
@@ -498,6 +527,10 @@ class StateManager:
             val = self.db.get_config("thresholds")
             if val:
                 data = json.loads(val)
+                if "forward_compensation_percent" not in data:
+                    data["forward_compensation_percent"] = config_loader.forward_compensation_percent
+                if "reverse_compensation_percent" not in data:
+                    data["reverse_compensation_percent"] = config_loader.reverse_compensation_percent
                 loaded = ThresholdConfig(**data)
                 logger.info(f"[StateManager] Loaded persistent thresholds from SQLite: {loaded.model_dump()}")
                 return loaded

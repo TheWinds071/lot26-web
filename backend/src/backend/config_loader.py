@@ -100,6 +100,28 @@ class ConfigLoader:
         """Returns Heating Tank (Tank 2) specification."""
         return self.raw_config.get("heating_tank", {})
 
+    @property
+    def forward_compensation_percent(self) -> float:
+        """Returns the forward volume compensation percentage from config.json5."""
+        try:
+            pipe = self.raw_config.get("single_pipeline_network", {})
+            flow_sensor = pipe.get("flow_sensor", {})
+            volume_ctrl = flow_sensor.get("volume_control", {})
+            return float(volume_ctrl.get("forward_compensation_percent", 40.0))
+        except Exception:
+            return 40.0
+
+    @property
+    def reverse_compensation_percent(self) -> float:
+        """Returns the reverse volume compensation percentage from config.json5."""
+        try:
+            pipe = self.raw_config.get("single_pipeline_network", {})
+            flow_sensor = pipe.get("flow_sensor", {})
+            volume_ctrl = flow_sensor.get("volume_control", {})
+            return float(volume_ctrl.get("reverse_compensation_percent", 40.0))
+        except Exception:
+            return 40.0
+
     def get_initial_thresholds(self) -> ThresholdConfig:
         """Constructs ThresholdConfig using values defined in config.json5."""
         try:
@@ -121,6 +143,8 @@ class ConfigLoader:
                 flow_rate_min=float(flow_sensor.get("min_flow_dry_run_threshold_lpm", 0.05)),
                 flow_rate_target=float(flow_sensor.get("target_flow_rate_lpm", 0.30)),
                 target_volume=round(float(volume_ctrl.get("target_volume_liters", 10.0)), 2),
+                forward_compensation_percent=float(volume_ctrl.get("forward_compensation_percent", 40.0)),
+                reverse_compensation_percent=float(volume_ctrl.get("reverse_compensation_percent", 40.0)),
                 volume_control_enabled=bool(volume_ctrl.get("enabled", True)),
             )
         except Exception as e:

@@ -58,11 +58,23 @@ class ThresholdConfig(BaseModel):
 
     # Volume / Batching rules (Liters)
     target_volume: float = Field(default=10.00, description="Target batch water volume threshold in liters (L, 2 decimal places)")
+    forward_compensation_percent: float = Field(
+        default=40.0,
+        description="Internal forward volume compensation percentage (%), e.g. 40.0 means +40%",
+    )
+    reverse_compensation_percent: float = Field(
+        default=40.0,
+        description="Internal reverse volume compensation percentage (%), e.g. 40.0 means +40%",
+    )
     volume_control_enabled: bool = Field(default=True, description="Enable automatic pump stop when target volume is reached")
 
     def model_post_init(self, __context):
         if self.target_volume is not None:
             self.target_volume = round(float(self.target_volume), 2)
+        if self.forward_compensation_percent is not None:
+            self.forward_compensation_percent = round(float(self.forward_compensation_percent), 2)
+        if self.reverse_compensation_percent is not None:
+            self.reverse_compensation_percent = round(float(self.reverse_compensation_percent), 2)
 
 
 class AlarmEvent(BaseModel):

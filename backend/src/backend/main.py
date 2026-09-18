@@ -265,6 +265,9 @@ async def get_system_config():
 async def reload_system_config():
     """Reloads config.json5 from disk dynamically."""
     raw = config_loader.load_config()
+    state_manager.thresholds.forward_compensation_percent = config_loader.forward_compensation_percent
+    state_manager.thresholds.reverse_compensation_percent = config_loader.reverse_compensation_percent
+    state_manager._notify("thresholds_updated", state_manager.thresholds.model_dump(mode="json"))
     return {
         "status": "success",
         "message": f"Successfully reloaded configuration from {config_loader.config_path}",

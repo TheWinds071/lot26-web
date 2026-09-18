@@ -42,6 +42,8 @@ export interface ThresholdConfig {
   flow_rate_min: number;
   flow_rate_target: number;
   target_volume?: number; // 目标供水量设定阈值 (L)
+  forward_compensation_percent?: number; // 正转供水内部补偿百分比 (%, 如 40.0 表示正转时内部自动补偿多进40%水量)
+  reverse_compensation_percent?: number; // 反转供水内部补偿百分比 (%, 如 40.0 表示反转时内部自动补偿多进40%水量)
   volume_control_enabled?: boolean; // 是否启用定水量自动停泵
 }
 
@@ -297,6 +299,8 @@ export interface SystemConfigResponse {
         volume_control?: {
           enabled?: boolean;
           target_volume_liters?: number;
+          forward_compensation_percent?: number;
+          reverse_compensation_percent?: number;
           auto_stop_pump?: boolean;
           unit?: string;
         };

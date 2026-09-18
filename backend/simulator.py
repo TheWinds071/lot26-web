@@ -54,11 +54,20 @@ class SinglePipeDualTankSimulator:
         self.interval = interval
         self.max_flow = max_flow
 
+        # Physical dimensions from config.json5 (Length, Width, Height in mm -> capacity in Liters)
+        dims1 = _TANK1_CFG.get("physical_specs", {}).get("dimensions_mm", {})
+        l1, w1, h1 = float(dims1.get("length", 500.0)), float(dims1.get("width", dims1.get("width_or_diameter", 250.0))), float(dims1.get("height", 800.0))
+        self.tank1_capacity_l = (l1 * w1 * h1) / 1_000_000.0
+
+        dims2 = _TANK2_CFG.get("physical_specs", {}).get("dimensions_mm", {})
+        l2, w2, h2 = float(dims2.get("length", 500.0)), float(dims2.get("width", dims2.get("width_or_diameter", 250.0))), float(dims2.get("height", 800.0))
+        self.tank2_capacity_l = (l2 * w2 * h2) / 1_000_000.0
+
         # Physical state variables for 2 water tanks connected by 1 single pipe (from config.json5)
         self.temp_tank1 = float(_TANK1_CFG.get("temperature_monitoring", {}).get("nominal_temperature_celsius", 48.0))
         self.temp_tank2 = float(_TANK2_CFG.get("temperature_monitoring", {}).get("nominal_temperature_celsius", 32.0))
-        self.water_level_tank1 = float(_TANK1_CFG.get("water_level_monitoring", {}).get("nominal_level_percentage", 75.0))
-        self.water_level_tank2 = float(_TANK2_CFG.get("water_level_monitoring", {}).get("nominal_level_percentage", 65.0))
+        self.water_level_tank1 = float(_TANK1_CFG.get("water_level_monitoring", {}).get("initial_level_percentage", _TANK1_CFG.get("water_level_monitoring", {}).get("nominal_level_percentage", 75.0)))
+        self.water_level_tank2 = float(_TANK2_CFG.get("water_level_monitoring", {}).get("initial_level_percentage", _TANK2_CFG.get("water_level_monitoring", {}).get("nominal_level_percentage", 65.0)))
 
         self.ambient_temp = 22.0  # Ambient room temp (°C)
         self.pressure = 4000.0    # Single pipe pressure (Pa, idle)
@@ -122,19 +131,27 @@ class SinglePipeDualTankSimulator:
             # Tank 1 natural ambient cooling
             self.temp_tank1 += (self.ambient_temp - self.temp_tank1) * 0.02 * dt
 
-            # Single-Pipe Water Transfer between Tank 1 and Tank 2
-            if self.pump_active and self.flow_rate > 1.0:
-                transfer_rate = min(0.35, (self.flow_rate / 30.0) * 0.15 * dt)
+            # Single-Pipe Water Transfer between Tank 1 and Tank 2 based on flow rate and tank dimensions
+            if self.pump_active and self.flow_rate > 0.001:
+                # Volume transferred in dt seconds: delta_v = (flow_rate / 60.0) * dt (L)
+                dv = (self.flow_rate / 60.0) * dt
+                cap1 = self.tank1_capacity_l if self.tank1_capacity_l > 0 else 100.0
+                cap2 = self.tank2_capacity_l if self.tank2_capacity_l > 0 else 100.0
+                dlvl1 = (dv / cap1) * 100.0
+                dlvl2 = (dv / cap2) * 100.0
+
+                norm_flow = self.max_flow * 60.0 if self.max_flow > 0 else 24.0
+                transfer_rate = min(0.35, (self.flow_rate / norm_flow) * 0.15 * dt)
                 if self.pump_direction == "FORWARD":
                     # FORWARD (1 -> 2): Water flows from Tank 1 into Tank 2
                     self.temp_tank2 += (self.temp_tank1 - self.temp_tank2) * transfer_rate
-                    self.water_level_tank1 = max(30.0, self.water_level_tank1 - 0.2 * dt)
-                    self.water_level_tank2 = min(90.0, self.water_level_tank2 + 0.2 * dt)
+                    self.water_level_tank1 = max(0.0, self.water_level_tank1 - dlvl1)
+                    self.water_level_tank2 = min(100.0, self.water_level_tank2 + dlvl2)
                 else:
-                    # REVERSE (2 -> 1): Hot water from Tank 2 flows into Tank 1
+                    # REVERSE (2 -> 1): Water from Tank 2 flows into Tank 1
                     self.temp_tank1 += (self.temp_tank2 - self.temp_tank1) * transfer_rate
-                    self.water_level_tank1 = min(90.0, self.water_level_tank1 + 0.2 * dt)
-                    self.water_level_tank2 = max(30.0, self.water_level_tank2 - 0.2 * dt)
+                    self.water_level_tank1 = min(100.0, self.water_level_tank1 + dlvl1)
+                    self.water_level_tank2 = max(0.0, self.water_level_tank2 - dlvl2)
 
         self.temp_tank1 += random.uniform(-0.03, 0.03)
         self.temp_tank2 += random.uniform(-0.03, 0.03)
@@ -201,6 +218,12 @@ class SinglePipeDualTankSimulator:
                                     self.emergency_stop = resp_json["emergency_stop"]
                                 if resp_json.get("target_volume_reached"):
                                     print("🎯 [Simulator] Target volume reached! Water pump auto-stopped by SCADA controller.")
+                                if "set_water_level_tank1" in resp_json:
+                                    self.water_level_tank1 = max(0.0, min(100.0, float(resp_json["set_water_level_tank1"])))
+                                    print(f"💧 [Simulator] Water level Tank 1 set to: {self.water_level_tank1:.1f}%")
+                                if "set_water_level_tank2" in resp_json:
+                                    self.water_level_tank2 = max(0.0, min(100.0, float(resp_json["set_water_level_tank2"])))
+                                    print(f"💧 [Simulator] Water level Tank 2 set to: {self.water_level_tank2:.1f}%")
                             # Drain any additional queued lines in reader buffer
                             if not reader.at_eof() and reader._buffer:
                                 resp_data = await reader.readline()

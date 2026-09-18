@@ -100,6 +100,21 @@ class ConfigLoader:
         """Returns Heating Tank (Tank 2) specification."""
         return self.raw_config.get("heating_tank", {})
 
+    def get_tank_dimensions(self, tank_id: str = "tank_1") -> Dict[str, float]:
+        """Returns length, width, height (mm) and capacity in Liters for the specified tank."""
+        tank_cfg = self.storage_tank_config if tank_id == "tank_1" else self.heating_tank_config
+        dims = tank_cfg.get("physical_specs", {}).get("dimensions_mm", {})
+        length = float(dims.get("length", 500.0))
+        width = float(dims.get("width", dims.get("width_or_diameter", 250.0)))
+        height = float(dims.get("height", 800.0))
+        capacity_liters = (length * width * height) / 1_000_000.0
+        return {
+            "length_mm": length,
+            "width_mm": width,
+            "height_mm": height,
+            "capacity_liters": capacity_liters,
+        }
+
     @property
     def forward_compensation_percent(self) -> float:
         """Returns the forward volume compensation percentage from config.json5."""

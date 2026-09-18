@@ -72,6 +72,7 @@ class StateManager:
         self.tcp_client_connected = False
         self.last_packet_time: Optional[datetime] = None
         self._last_flow_calc_time: Optional[datetime] = None
+        self.pending_water_level_updates: Dict[str, float] = {}
 
         # Listeners for real-time websocket broadcast
         self._listeners: Set[Callable[[dict], None]] = set()
@@ -635,6 +636,37 @@ class StateManager:
         self._notify("device_state_updated", self.device_state.model_dump(mode="json"))
         logger.info(f"[StateManager] Control relay switched to: {'ON/Closed' if active else 'OFF/Open'}")
         return self.device_state
+
+    def set_water_levels(
+        self,
+        level_tank1: Optional[float] = None,
+        level_tank2: Optional[float] = None,
+    ) -> Dict[str, float]:
+        """Manually sets/resets the current water level percentages for Tank 1 and/or Tank 2."""
+        res = {}
+        if level_tank1 is not None:
+            val1 = max(0.0, min(100.0, round(float(level_tank1), 1)))
+            self.pending_water_level_updates["set_water_level_tank1"] = val1
+            if self.latest_telemetry:
+                self.latest_telemetry.water_level_tank1 = val1
+            res["water_level_tank1"] = val1
+        if level_tank2 is not None:
+            val2 = max(0.0, min(100.0, round(float(level_tank2), 1)))
+            self.pending_water_level_updates["set_water_level_tank2"] = val2
+            if self.latest_telemetry:
+                self.latest_telemetry.water_level_tank2 = val2
+            res["water_level_tank2"] = val2
+
+        if self.latest_telemetry:
+            self.latest_telemetry.timestamp = datetime.now()
+            self._notify("telemetry", self.latest_telemetry.model_dump(mode="json"))
+            try:
+                self.db.insert_telemetry(self.latest_telemetry)
+            except Exception as e:
+                logger.error(f"[StateManager] Error inserting telemetry on level set: {e}")
+
+        logger.info(f"[StateManager] Water levels adjusted: {res}")
+        return res
 
     def get_system_status(self) -> SystemStatus:
         active_alarms = [a for a in self.alarms if not a.resolved]

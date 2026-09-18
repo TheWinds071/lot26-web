@@ -104,6 +104,11 @@ class EmergencyStopRequest(BaseModel):
     emergency_stop: bool
 
 
+class WaterLevelControlRequest(BaseModel):
+    water_level_tank1: Optional[float] = Field(default=None, ge=0.0, le=100.0, description="Tank 1 water level percentage (%)")
+    water_level_tank2: Optional[float] = Field(default=None, ge=0.0, le=100.0, description="Tank 2 water level percentage (%)")
+
+
 @app.get("/")
 async def root():
     return {
@@ -369,6 +374,27 @@ async def reset_volume():
     return state
 
 
+@app.post("/api/control/water-levels")
+async def set_water_levels(req: WaterLevelControlRequest):
+    """Sets initial or custom water level percentages for Tank 1 and Tank 2."""
+    updated = state_manager.set_water_levels(
+        level_tank1=req.water_level_tank1,
+        level_tank2=req.water_level_tank2,
+    )
+    downlink_cmd = {"cmd": "SET_WATER_LEVELS"}
+    if req.water_level_tank1 is not None:
+        downlink_cmd["set_water_level_tank1"] = round(float(req.water_level_tank1), 1)
+    if req.water_level_tank2 is not None:
+        downlink_cmd["set_water_level_tank2"] = round(float(req.water_level_tank2), 1)
+    await tcp_server.broadcast_downlink(downlink_cmd)
+
+    return {
+        "status": "success",
+        "message": "Water levels updated successfully",
+        "levels": updated,
+    }
+
+
 @app.websocket("/ws/telemetry")
 async def websocket_telemetry(websocket: WebSocket):
     """WebSocket endpoint for real-time telemetry streaming and live interaction."""
@@ -432,6 +458,16 @@ async def websocket_telemetry(websocket: WebSocket):
                     })
                 elif action == "reset_volume":
                     state_manager.reset_accumulated_volume()
+                elif action == "set_water_levels":
+                    lvl1 = msg.get("water_level_tank1")
+                    lvl2 = msg.get("water_level_tank2")
+                    state_manager.set_water_levels(level_tank1=lvl1, level_tank2=lvl2)
+                    downlink_cmd = {"cmd": "SET_WATER_LEVELS"}
+                    if lvl1 is not None:
+                        downlink_cmd["set_water_level_tank1"] = round(float(lvl1), 1)
+                    if lvl2 is not None:
+                        downlink_cmd["set_water_level_tank2"] = round(float(lvl2), 1)
+                    await tcp_server.broadcast_downlink(downlink_cmd)
                 elif action == "update_thresholds":
                     state_manager.update_thresholds(ThresholdConfig(**msg.get("thresholds", {})))
                     if state_manager.device_state.auto_mode:

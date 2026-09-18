@@ -160,6 +160,9 @@ class TCPServer:
                                 "emergency_stop": state_manager.device_state.emergency_stop,
                                 "timestamp": datetime.now().isoformat(),
                             }
+                            if state_manager.pending_water_level_updates:
+                                response.update(state_manager.pending_water_level_updates)
+                                state_manager.pending_water_level_updates.clear()
                             writer.write((json.dumps(response) + "\n").encode("utf-8"))
                             await writer.drain()
 

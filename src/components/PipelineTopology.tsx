@@ -73,6 +73,13 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
   const vol2 = (lvl2 / 100) * cap2;
   const height2Mm = (lvl2 / 100) * h2;
 
+  const forwardComp = Number(systemConfig?.config?.single_pipeline_network?.flow_sensor?.volume_control?.forward_compensation_percent ?? 40);
+  const reverseComp = Number(systemConfig?.config?.single_pipeline_network?.flow_sensor?.volume_control?.reverse_compensation_percent ?? 40);
+  const activeComp = isForward ? forwardComp : reverseComp;
+  const displayAccumulatedVol = activeComp > 0
+    ? accumulatedVol / (1 + activeComp / 100)
+    : accumulatedVol;
+
   // Dynamic fluid transfer when pump is active
   React.useEffect(() => {
     if (!isPumpOn || flow <= 0.001) return;
@@ -197,7 +204,7 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
           >
             <Droplets className="w-3.5 h-3.5 text-cyan-600" />
             <span>
-              累计供水: {accumulatedVol.toFixed(2)} L
+              累计供水: {displayAccumulatedVol.toFixed(2)} L
               {isTargetReached && ' (定量已达标)'}
             </span>
           </span>
@@ -614,7 +621,7 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
           <g transform="translate(630, 136)">
             <rect x="0" y="10" width="88" height="54" rx="6" fill="#ffffff" stroke="#10b981" strokeWidth="2" />
             <text x="44" y="29" fill="#059669" fontSize="11.5" fontWeight="bold" textAnchor="middle">{flow.toFixed(2)} L/min</text>
-            <text x="44" y="45" fill="#0284c7" fontSize="9.5" fontWeight="600" textAnchor="middle">累计 {accumulatedVol.toFixed(2)} L</text>
+            <text x="44" y="45" fill="#0284c7" fontSize="9.5" fontWeight="600" textAnchor="middle">累计 {displayAccumulatedVol.toFixed(2)} L</text>
             <text x="44" y="78" fill="#334155" fontSize="11" fontWeight="600" textAnchor="middle">双向流量传感器</text>
           </g>
 

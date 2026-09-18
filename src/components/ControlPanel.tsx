@@ -50,9 +50,11 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const reverseCompPercent = thresholds?.reverse_compensation_percent ?? 40;
   const isForward = pumpDirection === 'FORWARD';
   const activeCompPercent = isForward ? forwardCompPercent : reverseCompPercent;
-  const effectiveTargetVolume = activeCompPercent > 0
-    ? Math.round(targetVolume * (1 + activeCompPercent / 100) * 100) / 100
-    : targetVolume;
+
+  // 已流出水量显示为原始设定基准值，消除内部补偿偏差
+  const displayAccumulatedVolume = activeCompPercent > 0
+    ? accumulatedVolume / (1 + activeCompPercent / 100)
+    : accumulatedVolume;
 
   // Sync external thresholds only when initial loading or user has no uncommitted edits
   useEffect(() => {
@@ -245,7 +247,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               <div>
                 <div className="flex justify-between items-baseline text-xs mb-1">
                   <span className="text-gray-500">
-                    已流出: <span className="font-mono font-bold text-cyan-700 text-sm">{accumulatedVolume.toFixed(2)}</span> L
+                    已流出: <span className="font-mono font-bold text-cyan-700 text-sm">{displayAccumulatedVolume.toFixed(2)}</span> L
                   </span>
                   <span className="text-gray-500">
                     设定目标: <span className="font-mono font-bold text-gray-800">{targetVolume.toFixed(2)}</span> L
@@ -257,13 +259,13 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                       targetVolumeReached ? 'bg-emerald-500' : 'bg-cyan-500'
                     }`}
                     style={{
-                      width: `${Math.min(100, effectiveTargetVolume > 0 ? (accumulatedVolume / effectiveTargetVolume) * 100 : 0)}%`,
+                      width: `${Math.min(100, targetVolume > 0 ? (displayAccumulatedVolume / targetVolume) * 100 : 0)}%`,
                     }}
                   />
                 </div>
                 <div className="flex justify-between text-[11px] text-gray-400 mt-1">
                   <span>
-                    进度: {effectiveTargetVolume > 0 ? Math.min(100, Math.round((accumulatedVolume / effectiveTargetVolume) * 100)) : 0}%
+                    进度: {targetVolume > 0 ? Math.min(100, Math.round((displayAccumulatedVolume / targetVolume) * 100)) : 0}%
                   </span>
                   <span>{volumeControlEnabled ? '⚡ 达标自动停泵已开启' : '⚠️ 定量自动停泵已关闭'}</span>
                 </div>
@@ -271,7 +273,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
               {targetVolumeReached && (
                 <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] leading-relaxed">
-                  ✅ <strong>定量供水已达标</strong>：已达到设定值 {targetVolume.toFixed(2)} L，水泵已安全停止。点击启动水泵或清零可开始下一批次。
+                  ✅ <strong>定量供水已达标</strong>：已达到设定值 {displayAccumulatedVolume.toFixed(2)} L，水泵已安全停止。点击启动水泵或清零可开始下一批次。
                 </div>
               )}
             </div>

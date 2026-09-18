@@ -478,11 +478,13 @@ class StateManager:
             self.device_state.last_updated = datetime.now()
             action_taken = True
             if comp_pct > 0:
+                display_vol = round(self.device_state.accumulated_volume / (1.0 + comp_pct / 100.0), 2)
                 logger.info(
                     f"[Volume Control] Target volume reached: {self.device_state.accumulated_volume:.2f}L >= "
                     f"{effective_target_vol:.2f}L (base {target_vol:.2f}L + {comp_pct:.1f}% {dir_name} comp) -> Auto stopped water pump!"
                 )
             else:
+                display_vol = round(self.device_state.accumulated_volume, 2)
                 logger.info(
                     f"[Volume Control] Target volume reached: {self.device_state.accumulated_volume:.2f}L >= "
                     f"{effective_target_vol:.2f}L -> Auto stopped water pump!"
@@ -491,10 +493,10 @@ class StateManager:
                 level="INFO",
                 type="VOLUME_TARGET_REACHED",
                 message=(
-                    f"定量供水已达标: 累计已流出 {self.device_state.accumulated_volume:.2f} L 水 "
+                    f"定量供水已达标: 累计已流出 {display_vol:.2f} L 水 "
                     f"(设定目标 {target_vol:.2f} L)，水泵已自动停止。"
                 ),
-                value=self.device_state.accumulated_volume,
+                value=display_vol,
             )
 
         # 4. Auto Control Logic (Temperature Only - Water pump is manually controlled)

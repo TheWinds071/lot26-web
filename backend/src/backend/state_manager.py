@@ -74,6 +74,12 @@ class StateManager:
         self._last_flow_calc_time: Optional[datetime] = None
         self.pending_water_level_updates: Dict[str, float] = {}
 
+        # Water levels for Tank 1 and Tank 2 (%)
+        _t1_cfg = config_loader.storage_tank_config.get("water_level_monitoring", {})
+        _t2_cfg = config_loader.heating_tank_config.get("water_level_monitoring", {})
+        self.water_level_tank1: float = float(_t1_cfg.get("initial_level_percentage", _t1_cfg.get("nominal_level_percentage", 75.0)))
+        self.water_level_tank2: float = float(_t2_cfg.get("initial_level_percentage", _t2_cfg.get("nominal_level_percentage", 65.0)))
+
         # Listeners for real-time websocket broadcast
         self._listeners: Set[Callable[[dict], None]] = set()
 
@@ -167,6 +173,28 @@ class StateManager:
             # Flow rate is in L/min; volume in dt seconds is (flow_rate / 60.0) * dt
             dv = (telemetry.flow_rate / 60.0) * calc_dt
             self.device_state.accumulated_volume = round(self.device_state.accumulated_volume + dv, 4)
+
+            # Convert volume transfer to water level percentage change using tank dimensions
+            dims1 = config_loader.get_tank_dimensions("tank_1")
+            dims2 = config_loader.get_tank_dimensions("tank_2")
+            cap1 = dims1["capacity_liters"] if dims1["capacity_liters"] > 0 else 100.0
+            cap2 = dims2["capacity_liters"] if dims2["capacity_liters"] > 0 else 100.0
+            dlvl1 = (dv / cap1) * 100.0
+            dlvl2 = (dv / cap2) * 100.0
+
+            if self.device_state.pump_direction == "FORWARD":
+                self.water_level_tank1 = max(0.0, self.water_level_tank1 - dlvl1)
+                self.water_level_tank2 = min(100.0, self.water_level_tank2 + dlvl2)
+            else:
+                self.water_level_tank1 = min(100.0, self.water_level_tank1 + dlvl1)
+                self.water_level_tank2 = max(0.0, self.water_level_tank2 - dlvl2)
+        elif telemetry.water_level_tank1 is not None and not self.pending_water_level_updates:
+            # If pump is idle and telemetry has level without pending overrides, sync
+            self.water_level_tank1 = telemetry.water_level_tank1
+            self.water_level_tank2 = telemetry.water_level_tank2
+
+        telemetry.water_level_tank1 = round(self.water_level_tank1, 1)
+        telemetry.water_level_tank2 = round(self.water_level_tank2, 1)
 
         if telemetry.total_volume is None or telemetry.total_volume == 0.0:
             telemetry.total_volume = round(self.device_state.accumulated_volume, 3)
@@ -646,26 +674,49 @@ class StateManager:
         res = {}
         if level_tank1 is not None:
             val1 = max(0.0, min(100.0, round(float(level_tank1), 1)))
+            self.water_level_tank1 = val1
             self.pending_water_level_updates["set_water_level_tank1"] = val1
-            if self.latest_telemetry:
-                self.latest_telemetry.water_level_tank1 = val1
             res["water_level_tank1"] = val1
         if level_tank2 is not None:
             val2 = max(0.0, min(100.0, round(float(level_tank2), 1)))
+            self.water_level_tank2 = val2
             self.pending_water_level_updates["set_water_level_tank2"] = val2
-            if self.latest_telemetry:
-                self.latest_telemetry.water_level_tank2 = val2
             res["water_level_tank2"] = val2
 
-        if self.latest_telemetry:
+        if self.latest_telemetry is None:
+            t1_cfg = config_loader.storage_tank_config.get("temperature_monitoring", {})
+            t2_cfg = config_loader.heating_tank_config.get("temperature_monitoring", {})
+            self.latest_telemetry = TelemetryData(
+                device_id="DUAL_TANK_STATION_01",
+                temp_tank1=float(t1_cfg.get("nominal_temperature_celsius", 48.0)),
+                temp_tank2=float(t2_cfg.get("nominal_temperature_celsius", 32.0)),
+                pressure=4000.0,
+                flow_rate=0.0,
+                total_volume=self.device_state.accumulated_volume,
+                water_level_tank1=self.water_level_tank1,
+                water_level_tank2=self.water_level_tank2,
+                timestamp=datetime.now(),
+            )
+        else:
+            self.latest_telemetry.water_level_tank1 = self.water_level_tank1
+            self.latest_telemetry.water_level_tank2 = self.water_level_tank2
             self.latest_telemetry.timestamp = datetime.now()
-            self._notify("telemetry", self.latest_telemetry.model_dump(mode="json"))
-            try:
-                self.db.insert_telemetry(self.latest_telemetry)
-            except Exception as e:
-                logger.error(f"[StateManager] Error inserting telemetry on level set: {e}")
 
-        logger.info(f"[StateManager] Water levels adjusted: {res}")
+        self._notify("water_levels_updated", {
+            "water_level_tank1": self.water_level_tank1,
+            "water_level_tank2": self.water_level_tank2,
+        })
+        self._notify("telemetry", {
+            "telemetry": self.latest_telemetry.model_dump(mode="json"),
+            "device_state": self.device_state.model_dump(mode="json"),
+            "status": self.get_system_status().model_dump(mode="json"),
+        })
+        try:
+            self.db.insert_telemetry(self.latest_telemetry)
+        except Exception as e:
+            logger.error(f"[StateManager] Error inserting telemetry on level set: {e}")
+
+        logger.info(f"[StateManager] Water levels adjusted: Tank1={self.water_level_tank1}%, Tank2={self.water_level_tank2}%")
         return res
 
     def get_system_status(self) -> SystemStatus:

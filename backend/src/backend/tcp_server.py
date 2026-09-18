@@ -47,8 +47,8 @@ class TCPServer:
 
                 press = float(data.get("pressure", data.get("press", data.get("p", 0.0))))
                 flow = float(data.get("flow_rate", data.get("flow", data.get("f", 0.0))))
-                lvl1 = float(data.get("water_level_tank1", data.get("lvl1", 75.0)))
-                lvl2 = float(data.get("water_level_tank2", data.get("lvl2", 65.0)))
+                lvl1 = float(data.get("water_level_tank1", data.get("lvl1", state_manager.water_level_tank1)))
+                lvl2 = float(data.get("water_level_tank2", data.get("lvl2", state_manager.water_level_tank2)))
                 dev_id = str(data.get("device_id", data.get("dev", "DUAL_TANK_STATION_01")))
 
                 return TelemetryData(

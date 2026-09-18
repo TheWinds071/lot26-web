@@ -35,8 +35,25 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
   const accumulatedVol = deviceState?.accumulated_volume ?? telemetry?.total_volume ?? 0;
   const isTargetReached = deviceState?.target_volume_reached ?? false;
 
-  const lvl1 = Math.max(0, Math.min(100, telemetry?.water_level_tank1 ?? 75.0));
-  const lvl2 = Math.max(0, Math.min(100, telemetry?.water_level_tank2 ?? 65.0));
+  // Local state for Initial Water Level adjustment and immediate reactive updates
+  const [localLvl1, setLocalLvl1] = useState<number | null>(null);
+  const [localLvl2, setLocalLvl2] = useState<number | null>(null);
+
+  // Sync with incoming telemetry if new data arrives
+  React.useEffect(() => {
+    if (telemetry?.water_level_tank1 !== undefined) {
+      setLocalLvl1(telemetry.water_level_tank1);
+    }
+  }, [telemetry?.water_level_tank1]);
+
+  React.useEffect(() => {
+    if (telemetry?.water_level_tank2 !== undefined) {
+      setLocalLvl2(telemetry.water_level_tank2);
+    }
+  }, [telemetry?.water_level_tank2]);
+
+  const lvl1 = Math.max(0, Math.min(100, localLvl1 !== null ? localLvl1 : (telemetry?.water_level_tank1 ?? 75.0)));
+  const lvl2 = Math.max(0, Math.min(100, localLvl2 !== null ? localLvl2 : (telemetry?.water_level_tank2 ?? 65.0)));
 
   // Tank 1 dimensions (mm) and calculated capacity (L) from config.json5
   const dims1 = tank1Cfg?.physical_specs?.dimensions_mm;
@@ -56,6 +73,25 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
   const vol2 = (lvl2 / 100) * cap2;
   const height2Mm = (lvl2 / 100) * h2;
 
+  // Dynamic fluid transfer when pump is active
+  React.useEffect(() => {
+    if (!isPumpOn || flow <= 0.001) return;
+    const timer = setInterval(() => {
+      // dv in 0.5s = (flow / 60) * 0.5 Liters
+      const dv = (flow / 60.0) * 0.5;
+      const d1 = (dv / cap1) * 100;
+      const d2 = (dv / cap2) * 100;
+      if (isForward) {
+        setLocalLvl1((prev) => Math.max(0, (prev ?? lvl1) - d1));
+        setLocalLvl2((prev) => Math.min(100, (prev ?? lvl2) + d2));
+      } else {
+        setLocalLvl1((prev) => Math.min(100, (prev ?? lvl1) + d1));
+        setLocalLvl2((prev) => Math.max(0, (prev ?? lvl2) - d2));
+      }
+    }, 500);
+    return () => clearInterval(timer);
+  }, [isPumpOn, flow, isForward, cap1, cap2]);
+
   // Local state for Initial Water Level adjustment panel
   const [isSettingOpen, setIsSettingOpen] = useState(false);
   const [inputLvl1, setInputLvl1] = useState<number>(lvl1);
@@ -70,8 +106,12 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
 
   const handleApplyLevels = (e: React.FormEvent) => {
     e.preventDefault();
+    const val1 = Number(inputLvl1);
+    const val2 = Number(inputLvl2);
+    setLocalLvl1(val1);
+    setLocalLvl2(val2);
     if (onSetWaterLevels) {
-      onSetWaterLevels(Number(inputLvl1), Number(inputLvl2));
+      onSetWaterLevels(val1, val2);
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 2500);
     }
@@ -82,6 +122,8 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
     const nom2 = Number(tank2Cfg?.water_level_monitoring?.initial_level_percentage ?? tank2Cfg?.water_level_monitoring?.nominal_level_percentage ?? 65.0);
     setInputLvl1(nom1);
     setInputLvl2(nom2);
+    setLocalLvl1(nom1);
+    setLocalLvl2(nom2);
     if (onSetWaterLevels) {
       onSetWaterLevels(nom1, nom2);
       setSavedSuccess(true);

@@ -92,6 +92,30 @@ export const App: React.FC = () => {
             setStatus((prev) =>
               prev ? { ...prev, thresholds: payload.data } : null
             );
+          } else if (payload.type === 'water_levels_updated') {
+            setStatus((prev) => {
+              if (!prev) return null;
+              const currentTelem = prev.telemetry || {
+                device_id: 'DUAL_TANK_STATION_01',
+                temp_tank1: 48,
+                temp_tank2: 32,
+                temperature: 40,
+                pressure: 4000,
+                flow_rate: 0,
+                total_volume: 0,
+                water_level_tank1: 75,
+                water_level_tank2: 65,
+                timestamp: new Date().toISOString(),
+              };
+              return {
+                ...prev,
+                telemetry: {
+                  ...currentTelem,
+                  water_level_tank1: payload.data.water_level_tank1 !== undefined ? payload.data.water_level_tank1 : currentTelem.water_level_tank1,
+                  water_level_tank2: payload.data.water_level_tank2 !== undefined ? payload.data.water_level_tank2 : currentTelem.water_level_tank2,
+                },
+              };
+            });
           } else if (payload.type === 'alarm') {
             const newAlarm = payload.data;
             setStatus((prev) => {
@@ -374,6 +398,63 @@ export const App: React.FC = () => {
   };
 
   const handleSetWaterLevels = async (level1?: number, level2?: number) => {
+    // Optimistic local state update right away
+    setStatus((prev) => {
+      const baseTelem: TelemetryData = prev?.telemetry || {
+        device_id: 'DUAL_TANK_STATION_01',
+        temp_tank1: 48,
+        temp_tank2: 32,
+        temperature: 40,
+        pressure: 4000,
+        flow_rate: 0,
+        total_volume: 0,
+        water_level_tank1: 75,
+        water_level_tank2: 65,
+        timestamp: new Date().toISOString(),
+      };
+      const updatedTelem: TelemetryData = {
+        ...baseTelem,
+        water_level_tank1: level1 !== undefined ? level1 : baseTelem.water_level_tank1,
+        water_level_tank2: level2 !== undefined ? level2 : baseTelem.water_level_tank2,
+      };
+      if (historicalFrame) {
+        setHistoricalFrame((h) =>
+          h
+            ? {
+                ...h,
+                water_level_tank1: updatedTelem.water_level_tank1,
+                water_level_tank2: updatedTelem.water_level_tank2,
+              }
+            : null
+        );
+      }
+      return prev ? { ...prev, telemetry: updatedTelem } : {
+        telemetry: updatedTelem,
+        device_state: {
+          auto_mode: false,
+          pump_active: false,
+          pump_direction: 'FORWARD',
+          pump_speed: 60,
+          heater_active: false,
+          emergency_stop: false,
+          last_updated: new Date().toISOString(),
+        },
+        thresholds: {
+          temp_target: 55,
+          temp_min: 45,
+          temp_max: 75,
+          temp_diff_max: 15,
+          pressure_min: 10000,
+          pressure_max: 800000,
+          flow_rate_min: 0.05,
+          flow_rate_target: 0.3,
+        },
+        active_alarms: [],
+        alarm_rules: [],
+        tcp_client_connected: false,
+      };
+    });
+
     sendWsMessage({ action: 'set_water_levels', water_level_tank1: level1, water_level_tank2: level2 });
     try {
       await fetch('/api/control/water-levels', {

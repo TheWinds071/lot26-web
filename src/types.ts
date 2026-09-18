@@ -232,6 +232,13 @@ export interface SystemConfigResponse {
         rated_capacity_liters?: number;
         usable_capacity_liters?: number;
         material?: string;
+        dimensions_mm?: {
+          length?: number;
+          width?: number;
+          height?: number;
+          width_or_diameter?: number;
+          wall_thickness?: number;
+        };
       };
       temperature_monitoring?: {
         nominal_temperature_celsius?: number;
@@ -240,6 +247,7 @@ export interface SystemConfigResponse {
       };
       water_level_monitoring?: {
         nominal_level_percentage?: number;
+        initial_level_percentage?: number;
         low_level_alarm_threshold?: number;
         high_level_alarm_threshold?: number;
         unit?: string;
@@ -253,6 +261,13 @@ export interface SystemConfigResponse {
         rated_capacity_liters?: number;
         usable_capacity_liters?: number;
         material?: string;
+        dimensions_mm?: {
+          length?: number;
+          width?: number;
+          height?: number;
+          width_or_diameter?: number;
+          wall_thickness?: number;
+        };
       };
       heating_module?: {
         module_id?: string;
@@ -276,6 +291,7 @@ export interface SystemConfigResponse {
       };
       water_level_monitoring?: {
         nominal_level_percentage?: number;
+        initial_level_percentage?: number;
         low_level_alarm_threshold?: number;
         high_level_alarm_threshold?: number;
         unit?: string;

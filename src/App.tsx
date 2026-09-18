@@ -373,6 +373,20 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleSetWaterLevels = async (level1?: number, level2?: number) => {
+    sendWsMessage({ action: 'set_water_levels', water_level_tank1: level1, water_level_tank2: level2 });
+    try {
+      await fetch('/api/control/water-levels', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ water_level_tank1: level1, water_level_tank2: level2 }),
+      });
+      fetchStatus();
+    } catch (e) {
+      console.error('Failed to set water levels:', e);
+    }
+  };
+
   const currentTelemetry = historicalFrame || status?.telemetry || undefined;
 
   return (
@@ -400,6 +414,7 @@ export const App: React.FC = () => {
           telemetry={currentTelemetry}
           deviceState={status?.device_state}
           systemConfig={systemConfig}
+          onSetWaterLevels={handleSetWaterLevels}
         />
 
         {/* 4. Multi-Channel Trend Curves with Draggable Historical Timeline */}

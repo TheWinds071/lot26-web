@@ -1,17 +1,19 @@
-import React from 'react';
-import { ArrowLeftRight, Droplets, Waves } from 'lucide-react';
+import React, { useState } from 'react';
+import { ArrowLeftRight, Check, ChevronDown, ChevronUp, Droplets, RotateCcw, Sliders, Waves, X } from 'lucide-react';
 import type { DeviceState, SystemConfigResponse, TelemetryData } from '../types';
 
 interface PipelineTopologyProps {
   telemetry?: TelemetryData;
   deviceState?: DeviceState;
   systemConfig?: SystemConfigResponse | null;
+  onSetWaterLevels?: (level1?: number, level2?: number) => void;
 }
 
 export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
   telemetry,
   deviceState,
   systemConfig,
+  onSetWaterLevels,
 }) => {
   const tank1Cfg = systemConfig?.config?.storage_tank;
   const tank2Cfg = systemConfig?.config?.heating_tank;
@@ -33,8 +35,59 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
   const accumulatedVol = deviceState?.accumulated_volume ?? telemetry?.total_volume ?? 0;
   const isTargetReached = deviceState?.target_volume_reached ?? false;
 
-  const lvl1 = telemetry?.water_level_tank1 ?? 75.0;
-  const lvl2 = telemetry?.water_level_tank2 ?? 65.0;
+  const lvl1 = Math.max(0, Math.min(100, telemetry?.water_level_tank1 ?? 75.0));
+  const lvl2 = Math.max(0, Math.min(100, telemetry?.water_level_tank2 ?? 65.0));
+
+  // Tank 1 dimensions (mm) and calculated capacity (L) from config.json5
+  const dims1 = tank1Cfg?.physical_specs?.dimensions_mm;
+  const l1 = Number(dims1?.length ?? 500);
+  const w1 = Number(dims1?.width ?? dims1?.width_or_diameter ?? 250);
+  const h1 = Number(dims1?.height ?? 800);
+  const cap1 = Number(tank1Cfg?.physical_specs?.rated_capacity_liters ?? (l1 * w1 * h1) / 1_000_000);
+  const vol1 = (lvl1 / 100) * cap1;
+  const height1Mm = (lvl1 / 100) * h1;
+
+  // Tank 2 dimensions (mm) and calculated capacity (L) from config.json5
+  const dims2 = tank2Cfg?.physical_specs?.dimensions_mm;
+  const l2 = Number(dims2?.length ?? 500);
+  const w2 = Number(dims2?.width ?? dims2?.width_or_diameter ?? 250);
+  const h2 = Number(dims2?.height ?? 800);
+  const cap2 = Number(tank2Cfg?.physical_specs?.rated_capacity_liters ?? (l2 * w2 * h2) / 1_000_000);
+  const vol2 = (lvl2 / 100) * cap2;
+  const height2Mm = (lvl2 / 100) * h2;
+
+  // Local state for Initial Water Level adjustment panel
+  const [isSettingOpen, setIsSettingOpen] = useState(false);
+  const [inputLvl1, setInputLvl1] = useState<number>(lvl1);
+  const [inputLvl2, setInputLvl2] = useState<number>(lvl2);
+  const [savedSuccess, setSavedSuccess] = useState(false);
+
+  const handleOpenSetting = () => {
+    setInputLvl1(lvl1);
+    setInputLvl2(lvl2);
+    setIsSettingOpen(!isSettingOpen);
+  };
+
+  const handleApplyLevels = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (onSetWaterLevels) {
+      onSetWaterLevels(Number(inputLvl1), Number(inputLvl2));
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 2500);
+    }
+  };
+
+  const handleResetToNominal = () => {
+    const nom1 = Number(tank1Cfg?.water_level_monitoring?.initial_level_percentage ?? tank1Cfg?.water_level_monitoring?.nominal_level_percentage ?? 75.0);
+    const nom2 = Number(tank2Cfg?.water_level_monitoring?.initial_level_percentage ?? tank2Cfg?.water_level_monitoring?.nominal_level_percentage ?? 65.0);
+    setInputLvl1(nom1);
+    setInputLvl2(nom2);
+    if (onSetWaterLevels) {
+      onSetWaterLevels(nom1, nom2);
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 2500);
+    }
+  };
 
   // Animation duration based on flow rate & pump speed (Adaptive to 0 ~ 0.4 L/min micro-flow)
   const maxFlowRef = flow <= 1.0 ? 0.4 : 30.0;
@@ -63,6 +116,20 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={handleOpenSetting}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border shadow-xs transition-all cursor-pointer ${
+              isSettingOpen
+                ? 'bg-blue-600 text-white border-blue-600'
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+            }`}
+            title="调节修改两水槽起始液位并自动根据尺寸换算"
+          >
+            <Sliders className="w-3.5 h-3.5" />
+            <span>调节起始水位</span>
+            {isSettingOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          </button>
           <span
             className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border ${
               isPumpOn
@@ -112,6 +179,180 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
           </span>
         </div>
       </div>
+
+      {/* Collapsible Initial Water Level Configuration Panel */}
+      {isSettingOpen && (
+        <form onSubmit={handleApplyLevels} className="mb-4 bg-slate-50 border border-blue-200 rounded-xl p-4 transition-all">
+          <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-200">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-md bg-blue-100 text-blue-700 flex items-center justify-center">
+                <Droplets className="w-3.5 h-3.5" />
+              </div>
+              <div>
+                <h4 className="text-xs font-semibold text-gray-800">
+                  水槽起始水位与尺寸容积自动换算 (Water Level & Physical Dimensions)
+                </h4>
+                <p className="text-[11px] text-gray-500">
+                  可分别设定两水槽初始液位百分比，系统自动根据 config.json5 中配置的长宽高截面积换算容积 (L) 与水深 (mm)
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {savedSuccess && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                  <Check className="w-3 h-3" /> 起始水位已更新
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => setIsSettingOpen(false)}
+                className="text-gray-400 hover:text-gray-600 p-1 rounded"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+            {/* Tank 1 Setting */}
+            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs space-y-2.5">
+              <div className="flex justify-between items-center text-xs">
+                <span className="font-semibold text-gray-800">{tank1Name} (储水槽) 起始水位</span>
+                <span className="text-[11px] font-mono text-cyan-700 bg-cyan-50 px-2 py-0.5 rounded border border-cyan-200">
+                  {inputLvl1.toFixed(1)}% ({((inputLvl1 / 100) * cap1).toFixed(1)}L / {Math.round((inputLvl1 / 100) * h1)}mm)
+                </span>
+              </div>
+              <div className="text-[11px] text-gray-500 flex justify-between">
+                <span>尺寸规格 (config.json5): {l1} × {w1} × {h1} mm</span>
+                <span>截面积: {(l1 * w1 / 10000).toFixed(1)} dm² | 满容积: {cap1} L</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="0.5"
+                  value={inputLvl1}
+                  onChange={(e) => setInputLvl1(Number(e.target.value))}
+                  className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                />
+                <div className="flex items-center w-20">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.5"
+                    value={inputLvl1}
+                    onChange={(e) => setInputLvl1(Number(e.target.value))}
+                    className="w-14 px-1.5 py-0.5 text-xs text-right border border-gray-300 rounded font-mono"
+                  />
+                  <span className="text-xs text-gray-500 ml-1">%</span>
+                </div>
+              </div>
+              {/* Quick Presets */}
+              <div className="flex items-center gap-1.5 pt-1">
+                <span className="text-[10px] text-gray-400">快速设置:</span>
+                {[20, 50, 75, 95].map((pct) => (
+                  <button
+                    key={pct}
+                    type="button"
+                    onClick={() => setInputLvl1(pct)}
+                    className={`px-1.5 py-0.5 text-[10px] rounded border transition-colors cursor-pointer ${
+                      inputLvl1 === pct
+                        ? 'bg-blue-50 text-blue-700 border-blue-300 font-semibold'
+                        : 'bg-slate-50 text-gray-600 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    {pct}%
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Tank 2 Setting */}
+            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs space-y-2.5">
+              <div className="flex justify-between items-center text-xs">
+                <span className="font-semibold text-gray-800">{tank2Name} (加热槽) 起始水位</span>
+                <span className="text-[11px] font-mono text-cyan-700 bg-cyan-50 px-2 py-0.5 rounded border border-cyan-200">
+                  {inputLvl2.toFixed(1)}% ({((inputLvl2 / 100) * cap2).toFixed(1)}L / {Math.round((inputLvl2 / 100) * h2)}mm)
+                </span>
+              </div>
+              <div className="text-[11px] text-gray-500 flex justify-between">
+                <span>尺寸规格 (config.json5): {l2} × {w2} × {h2} mm</span>
+                <span>截面积: {(l2 * w2 / 10000).toFixed(1)} dm² | 满容积: {cap2} L</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="0.5"
+                  value={inputLvl2}
+                  onChange={(e) => setInputLvl2(Number(e.target.value))}
+                  className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                />
+                <div className="flex items-center w-20">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.5"
+                    value={inputLvl2}
+                    onChange={(e) => setInputLvl2(Number(e.target.value))}
+                    className="w-14 px-1.5 py-0.5 text-xs text-right border border-gray-300 rounded font-mono"
+                  />
+                  <span className="text-xs text-gray-500 ml-1">%</span>
+                </div>
+              </div>
+              {/* Quick Presets */}
+              <div className="flex items-center gap-1.5 pt-1">
+                <span className="text-[10px] text-gray-400">快速设置:</span>
+                {[20, 50, 65, 95].map((pct) => (
+                  <button
+                    key={pct}
+                    type="button"
+                    onClick={() => setInputLvl2(pct)}
+                    className={`px-1.5 py-0.5 text-[10px] rounded border transition-colors cursor-pointer ${
+                      inputLvl2 === pct
+                        ? 'bg-blue-50 text-blue-700 border-blue-300 font-semibold'
+                        : 'bg-slate-50 text-gray-600 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    {pct}%
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-1">
+            <button
+              type="button"
+              onClick={handleResetToNominal}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs text-gray-600 bg-white hover:bg-gray-100 border border-gray-300 rounded-lg transition-colors cursor-pointer"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>恢复配置默认 ({tank1Cfg?.water_level_monitoring?.nominal_level_percentage ?? 75}% / {tank2Cfg?.water_level_monitoring?.nominal_level_percentage ?? 65}%)</span>
+            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsSettingOpen(false)}
+                className="px-3 py-1 text-xs text-gray-600 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+              >
+                收起
+              </button>
+              <button
+                type="submit"
+                className="inline-flex items-center gap-1.5 px-4 py-1 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition-colors cursor-pointer"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>设定起始水位</span>
+              </button>
+            </div>
+          </div>
+        </form>
+      )}
 
       {/* SVG Single-Pipe Dual-Tank Canvas */}
       <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 overflow-x-auto">
@@ -222,9 +463,50 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
               fill="#38bdf8"
               opacity="0.6"
             />
+
+            {/* Scale Markings Ruler on Tank 1 */}
+            <g opacity="0.35" stroke="#64748b" strokeWidth="1">
+              <line x1="8" y1="25" x2="16" y2="25" />
+              <line x1="8" y1="74" x2="13" y2="74" />
+              <line x1="8" y1="123" x2="13" y2="123" />
+              <line x1="8" y1="171" x2="13" y2="171" />
+              <line x1="8" y1="220" x2="16" y2="220" />
+            </g>
+            <g opacity="0.45" fontSize="7.5" fill="#64748b" textAnchor="start">
+              <text x="18" y="28">100%</text>
+              <text x="15" y="77">75%</text>
+              <text x="15" y="126">50%</text>
+              <text x="15" y="174">25%</text>
+            </g>
+
             {/* Titles */}
-            <text x="65" y="32" fill="#0f172a" fontSize="13" fontWeight="bold" textAnchor="middle">{tank1Name}</text>
-            <text x="65" y="48" fill="#0284c7" fontSize="10.5" fontWeight="500" textAnchor="middle">{tank1Label}</text>
+            <text x="65" y="30" fill="#0f172a" fontSize="12.5" fontWeight="bold" textAnchor="middle">{tank1Name}</text>
+            <text x="65" y="44" fill="#0284c7" fontSize="9.5" fontWeight="500" textAnchor="middle">{tank1Label}</text>
+
+            {/* Realtime Water Level & Volume Readout Badge inside Tank 1 */}
+            <g transform="translate(14, 52)">
+              <rect x="0" y="0" width="102" height="42" rx="6" fill="#ffffff" fillOpacity="0.92" stroke="#0284c7" strokeWidth="1.2" />
+              <text x="51" y="14" fill="#0369a1" fontSize="10.5" fontWeight="bold" textAnchor="middle">
+                {lvl1.toFixed(1)}% | {vol1.toFixed(1)}L
+              </text>
+              <text x="51" y="26" fill="#64748b" fontSize="8" textAnchor="middle">
+                高度: {Math.round(height1Mm)}mm ({h1}mm)
+              </text>
+              <text
+                x="51"
+                y="37"
+                fill={isPumpOn ? (isForward ? "#e11d48" : "#059669") : "#64748b"}
+                fontSize="8"
+                fontWeight="bold"
+                textAnchor="middle"
+              >
+                {isPumpOn
+                  ? isForward
+                    ? `▼ 出水 -${flow.toFixed(2)}L/min`
+                    : `▲ 进水 +${flow.toFixed(2)}L/min`
+                  : '○ 稳态保持'}
+              </text>
+            </g>
 
             {/* Temperature Sensor 1 Probe */}
             <g transform="translate(105, -25)">
@@ -233,6 +515,11 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
               <text x="0" y="8" fill="#d97706" fontSize="11" fontWeight="bold" textAnchor="middle">{t1.toFixed(1)}°C</text>
               <text x="0" y="19" fill="#64748b" fontSize="8.5" textAnchor="middle">温度传感器 1</text>
             </g>
+
+            {/* Dimensions Subtitle under Tank 1 */}
+            <text x="65" y="244" fill="#64748b" fontSize="8.5" textAnchor="middle">
+              尺寸: {l1}×{w1}×{h1}mm ({cap1}L)
+            </text>
           </g>
 
           {/* ================= SENSORS & BIDIRECTIONAL PUMP ON THE SINGLE PIPE ================= */}
@@ -300,17 +587,58 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
               width="114"
               height={(lvl2 / 100) * 195}
               rx="6"
-              fill="#e0f2fe"
+              fill={isHeaterOn ? "#fed7aa" : "#e0f2fe"}
               opacity="0.85"
             />
             <path
               d={`M 10 ${225 - (lvl2 / 100) * 195} Q 40 ${218 - (lvl2 / 100) * 195}, 70 ${225 - (lvl2 / 100) * 195} T 120 ${225 - (lvl2 / 100) * 195} L 120 215 L 10 215 Z`}
-              fill="#38bdf8"
+              fill={isHeaterOn ? "#fb923c" : "#38bdf8"}
               opacity="0.6"
             />
+
+            {/* Scale Markings Ruler on Tank 2 */}
+            <g opacity="0.35" stroke="#64748b" strokeWidth="1">
+              <line x1="8" y1="25" x2="16" y2="25" />
+              <line x1="8" y1="74" x2="13" y2="74" />
+              <line x1="8" y1="123" x2="13" y2="123" />
+              <line x1="8" y1="171" x2="13" y2="171" />
+              <line x1="8" y1="220" x2="16" y2="220" />
+            </g>
+            <g opacity="0.45" fontSize="7.5" fill="#64748b" textAnchor="start">
+              <text x="18" y="28">100%</text>
+              <text x="15" y="77">75%</text>
+              <text x="15" y="126">50%</text>
+              <text x="15" y="174">25%</text>
+            </g>
+
             {/* Titles */}
-            <text x="65" y="32" fill="#0f172a" fontSize="13" fontWeight="bold" textAnchor="middle">{tank2Name}</text>
-            <text x="65" y="48" fill="#0284c7" fontSize="10.5" fontWeight="500" textAnchor="middle">{tank2Label}</text>
+            <text x="65" y="30" fill="#0f172a" fontSize="12.5" fontWeight="bold" textAnchor="middle">{tank2Name}</text>
+            <text x="65" y="44" fill="#0284c7" fontSize="9.5" fontWeight="500" textAnchor="middle">{tank2Label}</text>
+
+            {/* Realtime Water Level & Volume Readout Badge inside Tank 2 */}
+            <g transform="translate(14, 52)">
+              <rect x="0" y="0" width="102" height="42" rx="6" fill="#ffffff" fillOpacity="0.92" stroke="#0284c7" strokeWidth="1.2" />
+              <text x="51" y="14" fill="#0369a1" fontSize="10.5" fontWeight="bold" textAnchor="middle">
+                {lvl2.toFixed(1)}% | {vol2.toFixed(1)}L
+              </text>
+              <text x="51" y="26" fill="#64748b" fontSize="8" textAnchor="middle">
+                高度: {Math.round(height2Mm)}mm ({h2}mm)
+              </text>
+              <text
+                x="51"
+                y="37"
+                fill={isPumpOn ? (isForward ? "#059669" : "#e11d48") : "#64748b"}
+                fontSize="8"
+                fontWeight="bold"
+                textAnchor="middle"
+              >
+                {isPumpOn
+                  ? isForward
+                    ? `▲ 进水 +${flow.toFixed(2)}L/min`
+                    : `▼ 出水 -${flow.toFixed(2)}L/min`
+                  : '○ 稳态保持'}
+              </text>
+            </g>
 
             {/* Heating Element inside Tank 2 */}
             <g transform="translate(25, 175)">
@@ -343,6 +671,11 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
               <text x="0" y="8" fill="#c2410c" fontSize="11" fontWeight="bold" textAnchor="middle">{t2.toFixed(1)}°C</text>
               <text x="0" y="19" fill="#64748b" fontSize="8.5" textAnchor="middle">温度传感器 2</text>
             </g>
+
+            {/* Dimensions Subtitle under Tank 2 */}
+            <text x="65" y="244" fill="#64748b" fontSize="8.5" textAnchor="middle">
+              尺寸: {l2}×{w2}×{h2}mm ({cap2}L)
+            </text>
           </g>
 
           {/* ================= FLOW DIRECTION ARROWS ON THE SINGLE PIPE ================= */}

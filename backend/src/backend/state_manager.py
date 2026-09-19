@@ -182,8 +182,8 @@ class StateManager:
             # Convert volume transfer to water level percentage change using tank dimensions
             dims1 = config_loader.get_tank_dimensions("tank_1")
             dims2 = config_loader.get_tank_dimensions("tank_2")
-            cap1 = dims1["capacity_liters"] if dims1["capacity_liters"] > 0 else 100.0
-            cap2 = dims2["capacity_liters"] if dims2["capacity_liters"] > 0 else 100.0
+            cap1 = dims1["capacity_liters"] if dims1["capacity_liters"] > 0 else 1.0
+            cap2 = dims2["capacity_liters"] if dims2["capacity_liters"] > 0 else 1.0
             dlvl1 = (dv / cap1) * 100.0
             dlvl2 = (dv / cap2) * 100.0
 

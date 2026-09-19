@@ -55,23 +55,37 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
   const lvl1 = Math.max(0, Math.min(100, localLvl1 !== null ? localLvl1 : (telemetry?.water_level_tank1 ?? 75.0)));
   const lvl2 = Math.max(0, Math.min(100, localLvl2 !== null ? localLvl2 : (telemetry?.water_level_tank2 ?? 65.0)));
 
-  // Tank 1 dimensions (mm) and calculated capacity (L) from config.json5
+  // Helper to dynamically calculate tank capacity from dimensions (mm -> Liters)
+  const getCapacityLiters = (dims?: { length?: number; width?: number; width_or_diameter?: number; height?: number } | null, fallback?: number) => {
+    const l = Number(dims?.length || 0);
+    const w = Number(dims?.width || dims?.width_or_diameter || 0);
+    const h = Number(dims?.height || 0);
+    if (l > 0 && w > 0 && h > 0) {
+      return (l * w * h) / 1_000_000;
+    }
+    return Number(fallback || 0);
+  };
+
+  // Tank 1 dimensions (mm) and dynamically calculated capacity (L) from config.json5
   const dims1 = tank1Cfg?.physical_specs?.dimensions_mm;
-  const l1 = Number(dims1?.length ?? 500);
-  const w1 = Number(dims1?.width ?? dims1?.width_or_diameter ?? 250);
-  const h1 = Number(dims1?.height ?? 800);
-  const cap1 = Number(tank1Cfg?.physical_specs?.rated_capacity_liters ?? (l1 * w1 * h1) / 1_000_000);
-  const vol1 = (lvl1 / 100) * cap1;
+  const l1 = Number(dims1?.length || 0);
+  const w1 = Number(dims1?.width || dims1?.width_or_diameter || 0);
+  const h1 = Number(dims1?.height || 0);
+  const cap1 = getCapacityLiters(dims1, tank1Cfg?.physical_specs?.rated_capacity_liters);
+  const vol1 = cap1 > 0 ? (lvl1 / 100) * cap1 : 0;
   const height1Mm = (lvl1 / 100) * h1;
 
-  // Tank 2 dimensions (mm) and calculated capacity (L) from config.json5
+  // Tank 2 dimensions (mm) and dynamically calculated capacity (L) from config.json5
   const dims2 = tank2Cfg?.physical_specs?.dimensions_mm;
-  const l2 = Number(dims2?.length ?? 500);
-  const w2 = Number(dims2?.width ?? dims2?.width_or_diameter ?? 250);
-  const h2 = Number(dims2?.height ?? 800);
-  const cap2 = Number(tank2Cfg?.physical_specs?.rated_capacity_liters ?? (l2 * w2 * h2) / 1_000_000);
-  const vol2 = (lvl2 / 100) * cap2;
+  const l2 = Number(dims2?.length || 0);
+  const w2 = Number(dims2?.width || dims2?.width_or_diameter || 0);
+  const h2 = Number(dims2?.height || 0);
+  const cap2 = getCapacityLiters(dims2, tank2Cfg?.physical_specs?.rated_capacity_liters);
+  const vol2 = cap2 > 0 ? (lvl2 / 100) * cap2 : 0;
   const height2Mm = (lvl2 / 100) * h2;
+
+  const formatVol = (v: number) => (cap1 < 10 || cap2 < 10 ? v.toFixed(2) : v.toFixed(1)) + 'L';
+  const formatCap = (c: number) => (c < 10 ? c.toFixed(2) : c.toFixed(1)) + 'L';
 
   const forwardComp = Number(systemConfig?.config?.single_pipeline_network?.flow_sensor?.volume_control?.forward_compensation_percent ?? 40);
   const reverseComp = Number(systemConfig?.config?.single_pipeline_network?.flow_sensor?.volume_control?.reverse_compensation_percent ?? 40);
@@ -99,22 +113,30 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
     return () => clearInterval(timer);
   }, [isPumpOn, flow, isForward, cap1, cap2]);
 
-  // Local state for Initial Water Level adjustment panel
+  // Local state for Initial Water Level adjustment panel (in actual height mm)
   const [isSettingOpen, setIsSettingOpen] = useState(false);
-  const [inputLvl1, setInputLvl1] = useState<number>(lvl1);
-  const [inputLvl2, setInputLvl2] = useState<number>(lvl2);
+  const [inputHeight1, setInputHeight1] = useState<number>(Number(height1Mm.toFixed(1)));
+  const [inputHeight2, setInputHeight2] = useState<number>(Number(height2Mm.toFixed(1)));
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   const handleOpenSetting = () => {
-    setInputLvl1(lvl1);
-    setInputLvl2(lvl2);
+    setInputHeight1(Number(height1Mm.toFixed(1)));
+    setInputHeight2(Number(height2Mm.toFixed(1)));
     setIsSettingOpen(!isSettingOpen);
   };
 
+  // Convert input height (mm) back to percentage and volume for preview
+  const calcPct1 = h1 > 0 ? Math.min(100, Math.max(0, (inputHeight1 / h1) * 100)) : 0;
+  const calcVol1 = (calcPct1 / 100) * cap1;
+  const calcPct2 = h2 > 0 ? Math.min(100, Math.max(0, (inputHeight2 / h2) * 100)) : 0;
+  const calcVol2 = (calcPct2 / 100) * cap2;
+
   const handleApplyLevels = (e: React.FormEvent) => {
     e.preventDefault();
-    const val1 = Number(inputLvl1);
-    const val2 = Number(inputLvl2);
+    const hVal1 = Math.max(0, Math.min(h1, Number(inputHeight1)));
+    const hVal2 = Math.max(0, Math.min(h2, Number(inputHeight2)));
+    const val1 = h1 > 0 ? Number(((hVal1 / h1) * 100).toFixed(1)) : 0;
+    const val2 = h2 > 0 ? Number(((hVal2 / h2) * 100).toFixed(1)) : 0;
     setLocalLvl1(val1);
     setLocalLvl2(val2);
     if (onSetWaterLevels) {
@@ -127,8 +149,10 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
   const handleResetToNominal = () => {
     const nom1 = Number(tank1Cfg?.water_level_monitoring?.initial_level_percentage ?? tank1Cfg?.water_level_monitoring?.nominal_level_percentage ?? 75.0);
     const nom2 = Number(tank2Cfg?.water_level_monitoring?.initial_level_percentage ?? tank2Cfg?.water_level_monitoring?.nominal_level_percentage ?? 65.0);
-    setInputLvl1(nom1);
-    setInputLvl2(nom2);
+    const defH1 = Number(((nom1 / 100) * h1).toFixed(1));
+    const defH2 = Number(((nom2 / 100) * h2).toFixed(1));
+    setInputHeight1(defH1);
+    setInputHeight2(defH2);
     setLocalLvl1(nom1);
     setLocalLvl2(nom2);
     if (onSetWaterLevels) {
@@ -239,10 +263,10 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
               </div>
               <div>
                 <h4 className="text-xs font-semibold text-gray-800">
-                  水槽起始水位与尺寸容积自动换算 (Water Level & Physical Dimensions)
+                  水槽起始水位高度调节 (Water Level Height Adjustment)
                 </h4>
                 <p className="text-[11px] text-gray-500">
-                  可分别设定两水槽初始液位百分比，系统自动根据 config.json5 中配置的长宽高截面积换算容积 (L) 与水深 (mm)
+                  直接设定两水槽的实际液位高度 (mm)，系统根据 config.json5 尺寸配置实时换算百分比与储水量 (L)
                 </p>
               </div>
             </div>
@@ -264,112 +288,76 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
             {/* Tank 1 Setting */}
-            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs space-y-2.5">
+            <div className="bg-white p-3.5 rounded-lg border border-slate-200 shadow-xs space-y-2.5">
               <div className="flex justify-between items-center text-xs">
-                <span className="font-semibold text-gray-800">{tank1Name} (储水槽) 起始水位</span>
+                <span className="font-semibold text-gray-800">{tank1Name} (储水槽) 起始高度</span>
                 <span className="text-[11px] font-mono text-cyan-700 bg-cyan-50 px-2 py-0.5 rounded border border-cyan-200">
-                  {inputLvl1.toFixed(1)}% ({((inputLvl1 / 100) * cap1).toFixed(1)}L / {Math.round((inputLvl1 / 100) * h1)}mm)
+                  {inputHeight1.toFixed(1)} mm ({calcPct1.toFixed(1)}% | {formatVol(calcVol1)})
                 </span>
               </div>
               <div className="text-[11px] text-gray-500 flex justify-between">
-                <span>尺寸规格 (config.json5): {l1} × {w1} × {h1} mm</span>
-                <span>截面积: {(l1 * w1 / 10000).toFixed(1)} dm² | 满容积: {cap1} L</span>
+                <span>尺寸规格 (config.json5): {l1} × {w1} × {h1} mm (厚度 {dims1?.wall_thickness ?? 2}mm)</span>
+                <span>满槽高度: {h1} mm | 满容积: {formatCap(cap1)}</span>
               </div>
               <div className="flex items-center gap-2">
                 <input
                   type="range"
                   min="0"
-                  max="100"
+                  max={h1}
                   step="0.5"
-                  value={inputLvl1}
-                  onChange={(e) => setInputLvl1(Number(e.target.value))}
+                  value={inputHeight1}
+                  onChange={(e) => setInputHeight1(Math.max(0, Math.min(h1, Number(e.target.value))))}
                   className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                 />
-                <div className="flex items-center w-20">
+                <div className="flex items-center w-24">
                   <input
                     type="number"
                     min="0"
-                    max="100"
+                    max={h1}
                     step="0.5"
-                    value={inputLvl1}
-                    onChange={(e) => setInputLvl1(Number(e.target.value))}
-                    className="w-14 px-1.5 py-0.5 text-xs text-right border border-gray-300 rounded font-mono"
+                    value={inputHeight1}
+                    onChange={(e) => setInputHeight1(Math.max(0, Math.min(h1, Number(e.target.value))))}
+                    className="w-16 px-1.5 py-0.5 text-xs text-right border border-gray-300 rounded font-mono"
                   />
-                  <span className="text-xs text-gray-500 ml-1">%</span>
+                  <span className="text-xs text-gray-500 ml-1 font-medium">mm</span>
                 </div>
-              </div>
-              {/* Quick Presets */}
-              <div className="flex items-center gap-1.5 pt-1">
-                <span className="text-[10px] text-gray-400">快速设置:</span>
-                {[20, 50, 75, 95].map((pct) => (
-                  <button
-                    key={pct}
-                    type="button"
-                    onClick={() => setInputLvl1(pct)}
-                    className={`px-1.5 py-0.5 text-[10px] rounded border transition-colors cursor-pointer ${
-                      inputLvl1 === pct
-                        ? 'bg-blue-50 text-blue-700 border-blue-300 font-semibold'
-                        : 'bg-slate-50 text-gray-600 border-slate-200 hover:bg-slate-100'
-                    }`}
-                  >
-                    {pct}%
-                  </button>
-                ))}
               </div>
             </div>
 
             {/* Tank 2 Setting */}
-            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs space-y-2.5">
+            <div className="bg-white p-3.5 rounded-lg border border-slate-200 shadow-xs space-y-2.5">
               <div className="flex justify-between items-center text-xs">
-                <span className="font-semibold text-gray-800">{tank2Name} (加热槽) 起始水位</span>
+                <span className="font-semibold text-gray-800">{tank2Name} (加热槽) 起始高度</span>
                 <span className="text-[11px] font-mono text-cyan-700 bg-cyan-50 px-2 py-0.5 rounded border border-cyan-200">
-                  {inputLvl2.toFixed(1)}% ({((inputLvl2 / 100) * cap2).toFixed(1)}L / {Math.round((inputLvl2 / 100) * h2)}mm)
+                  {inputHeight2.toFixed(1)} mm ({calcPct2.toFixed(1)}% | {formatVol(calcVol2)})
                 </span>
               </div>
               <div className="text-[11px] text-gray-500 flex justify-between">
-                <span>尺寸规格 (config.json5): {l2} × {w2} × {h2} mm</span>
-                <span>截面积: {(l2 * w2 / 10000).toFixed(1)} dm² | 满容积: {cap2} L</span>
+                <span>尺寸规格 (config.json5): {l2} × {w2} × {h2} mm (厚度 {dims2?.wall_thickness ?? 2}mm)</span>
+                <span>满槽高度: {h2} mm | 满容积: {formatCap(cap2)}</span>
               </div>
               <div className="flex items-center gap-2">
                 <input
                   type="range"
                   min="0"
-                  max="100"
+                  max={h2}
                   step="0.5"
-                  value={inputLvl2}
-                  onChange={(e) => setInputLvl2(Number(e.target.value))}
+                  value={inputHeight2}
+                  onChange={(e) => setInputHeight2(Math.max(0, Math.min(h2, Number(e.target.value))))}
                   className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                 />
-                <div className="flex items-center w-20">
+                <div className="flex items-center w-24">
                   <input
                     type="number"
                     min="0"
-                    max="100"
+                    max={h2}
                     step="0.5"
-                    value={inputLvl2}
-                    onChange={(e) => setInputLvl2(Number(e.target.value))}
-                    className="w-14 px-1.5 py-0.5 text-xs text-right border border-gray-300 rounded font-mono"
+                    value={inputHeight2}
+                    onChange={(e) => setInputHeight2(Math.max(0, Math.min(h2, Number(e.target.value))))}
+                    className="w-16 px-1.5 py-0.5 text-xs text-right border border-gray-300 rounded font-mono"
                   />
-                  <span className="text-xs text-gray-500 ml-1">%</span>
+                  <span className="text-xs text-gray-500 ml-1 font-medium">mm</span>
                 </div>
-              </div>
-              {/* Quick Presets */}
-              <div className="flex items-center gap-1.5 pt-1">
-                <span className="text-[10px] text-gray-400">快速设置:</span>
-                {[20, 50, 65, 95].map((pct) => (
-                  <button
-                    key={pct}
-                    type="button"
-                    onClick={() => setInputLvl2(pct)}
-                    className={`px-1.5 py-0.5 text-[10px] rounded border transition-colors cursor-pointer ${
-                      inputLvl2 === pct
-                        ? 'bg-blue-50 text-blue-700 border-blue-300 font-semibold'
-                        : 'bg-slate-50 text-gray-600 border-slate-200 hover:bg-slate-100'
-                    }`}
-                  >
-                    {pct}%
-                  </button>
-                ))}
               </div>
             </div>
           </div>
@@ -381,7 +369,7 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
               className="inline-flex items-center gap-1 px-2.5 py-1 text-xs text-gray-600 bg-white hover:bg-gray-100 border border-gray-300 rounded-lg transition-colors cursor-pointer"
             >
               <RotateCcw className="w-3 h-3" />
-              <span>恢复配置默认 ({tank1Cfg?.water_level_monitoring?.nominal_level_percentage ?? 75}% / {tank2Cfg?.water_level_monitoring?.nominal_level_percentage ?? 65}%)</span>
+              <span>恢复配置默认 (水槽1: {((Number(tank1Cfg?.water_level_monitoring?.nominal_level_percentage ?? 75) / 100) * h1).toFixed(1)}mm / 水槽2: {((Number(tank2Cfg?.water_level_monitoring?.nominal_level_percentage ?? 65) / 100) * h2).toFixed(1)}mm)</span>
             </button>
             <div className="flex items-center gap-2">
               <button
@@ -536,10 +524,10 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
             <g transform="translate(14, 52)">
               <rect x="0" y="0" width="102" height="42" rx="6" fill="#ffffff" fillOpacity="0.92" stroke="#0284c7" strokeWidth="1.2" />
               <text x="51" y="14" fill="#0369a1" fontSize="10.5" fontWeight="bold" textAnchor="middle">
-                {lvl1.toFixed(1)}% | {vol1.toFixed(1)}L
+                {lvl1.toFixed(1)}% | {formatVol(vol1)}
               </text>
               <text x="51" y="26" fill="#64748b" fontSize="8" textAnchor="middle">
-                高度: {Math.round(height1Mm)}mm ({h1}mm)
+                高度: {height1Mm.toFixed(1)}mm ({h1}mm)
               </text>
               <text
                 x="51"
@@ -567,7 +555,7 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
 
             {/* Dimensions Subtitle under Tank 1 */}
             <text x="65" y="244" fill="#64748b" fontSize="8.5" textAnchor="middle">
-              尺寸: {l1}×{w1}×{h1}mm ({cap1}L)
+              尺寸: {l1}×{w1}×{h1}mm ({formatCap(cap1)})
             </text>
           </g>
 
@@ -668,10 +656,10 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
             <g transform="translate(14, 52)">
               <rect x="0" y="0" width="102" height="42" rx="6" fill="#ffffff" fillOpacity="0.92" stroke="#0284c7" strokeWidth="1.2" />
               <text x="51" y="14" fill="#0369a1" fontSize="10.5" fontWeight="bold" textAnchor="middle">
-                {lvl2.toFixed(1)}% | {vol2.toFixed(1)}L
+                {lvl2.toFixed(1)}% | {formatVol(vol2)}
               </text>
               <text x="51" y="26" fill="#64748b" fontSize="8" textAnchor="middle">
-                高度: {Math.round(height2Mm)}mm ({h2}mm)
+                高度: {height2Mm.toFixed(1)}mm ({h2}mm)
               </text>
               <text
                 x="51"
@@ -723,7 +711,7 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
 
             {/* Dimensions Subtitle under Tank 2 */}
             <text x="65" y="244" fill="#64748b" fontSize="8.5" textAnchor="middle">
-              尺寸: {l2}×{w2}×{h2}mm ({cap2}L)
+              尺寸: {l2}×{w2}×{h2}mm ({formatCap(cap2)})
             </text>
           </g>
 

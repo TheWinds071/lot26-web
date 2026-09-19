@@ -32,8 +32,26 @@ class ConfigLoader:
                 return p.resolve()
         return None
 
+    def _compute_tank_specs(self) -> None:
+        """Dynamically computes rated capacity (Liters) based on dimensions_mm, avoiding hardcoded values."""
+        for tank_key in ["storage_tank", "heating_tank"]:
+            tank = self.raw_config.get(tank_key)
+            if isinstance(tank, dict):
+                specs = tank.setdefault("physical_specs", {})
+                dims = specs.get("dimensions_mm", {})
+                length = float(dims.get("length", 0.0))
+                width = float(dims.get("width", dims.get("width_or_diameter", 0.0)))
+                height = float(dims.get("height", 0.0))
+                if length > 0 and width > 0 and height > 0:
+                    cap = round((length * width * height) / 1_000_000.0, 3)
+                    specs["rated_capacity_liters"] = cap
+                    high_thr = float(
+                        tank.get("water_level_monitoring", {}).get("high_level_alarm_threshold", 90.0)
+                    )
+                    specs["usable_capacity_liters"] = round(cap * (high_thr / 100.0), 3)
+
     def load_config(self) -> Dict[str, Any]:
-        """Parses and loads the config.json5 file."""
+        """Parses and loads the config.json5 file and dynamically calculates tank capacities."""
         if not self.config_path or not self.config_path.is_file():
             # Retry searching in case path changed
             self.config_path = self._find_config_file()
@@ -42,6 +60,7 @@ class ConfigLoader:
             try:
                 with open(self.config_path, "r", encoding="utf-8") as f:
                     self.raw_config = json5.load(f)
+                self._compute_tank_specs()
                 logger.info(f"Successfully loaded system configuration from: {self.config_path}")
                 return self.raw_config
             except Exception as e:
@@ -49,6 +68,7 @@ class ConfigLoader:
         else:
             logger.warning(f"Could not locate {self.config_filename}, fallback to internal defaults.")
 
+        self._compute_tank_specs()
         return self.raw_config
 
     @property
@@ -104,10 +124,13 @@ class ConfigLoader:
         """Returns length, width, height (mm) and capacity in Liters for the specified tank."""
         tank_cfg = self.storage_tank_config if tank_id == "tank_1" else self.heating_tank_config
         dims = tank_cfg.get("physical_specs", {}).get("dimensions_mm", {})
-        length = float(dims.get("length", 500.0))
-        width = float(dims.get("width", dims.get("width_or_diameter", 250.0)))
-        height = float(dims.get("height", 800.0))
-        capacity_liters = (length * width * height) / 1_000_000.0
+        length = float(dims.get("length", 0.0))
+        width = float(dims.get("width", dims.get("width_or_diameter", 0.0)))
+        height = float(dims.get("height", 0.0))
+        capacity_liters = (
+            float(tank_cfg.get("physical_specs", {}).get("rated_capacity_liters", 0.0))
+            or ((length * width * height) / 1_000_000.0 if (length > 0 and width > 0 and height > 0) else 0.0)
+        )
         return {
             "length_mm": length,
             "width_mm": width,

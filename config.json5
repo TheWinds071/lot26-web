@@ -167,16 +167,14 @@
     display_label: '储水槽 / 常温供水主槽', // 功能标签
     role: 'storage_and_supply', // 功能角色：常温储水、回水沉淀与正向供水主槽
 
-    // 3.1 物理结构与容器参数
+    // 3.1 物理结构与容器参数 (额定容积与有效储水容积由系统根据下方尺寸与阈值自动计算，无需手动写死)
     physical_specs: {
-      rated_capacity_liters: 100.0, // 额定设计容积 (升)
-      usable_capacity_liters: 90.0, // 最大安全有效储水容积 (升)
       material: 'SUS304 食品级不锈钢 / 高透明工业加厚亚克力', // 槽体材质
       dimensions_mm: {
-        length: 500.0, // 水槽长度 (mm)
-        width: 250.0, // 水槽宽度 (mm)
-        height: 800.0, // 水槽整体物理高度 (mm)
-        wall_thickness: 4.0, // 槽壁厚度 (mm)
+        length: 145.0, // 水槽长度 (mm)
+        width: 125.0, // 水槽宽度 (mm)
+        height: 90.0, // 水槽整体物理高度 (mm)
+        wall_thickness: 2.0, // 槽壁厚度 (mm)
       },
       thermal_insulation: {
         enabled: false, // 常温储水槽无主动发泡保温层
@@ -190,7 +188,7 @@
       telemetry_key: 'temp_tank1', // 报文中对应的字段名
       sensor_name: '温度传感器 1 (水槽 1 测温探头)',
       sensor_type: 'PT100 铂热电阻 (Class A 高精度探针)',
-      installation_position: '水槽中部偏下浸入式测温套管 (距槽底 200mm)',
+      installation_position: '水槽中部偏下浸入式测温套管 (距槽底 30mm)',
       measurement_range_celsius: {
         min: 0.0, // 传感器测温下限 (°C)
         max: 100.0, // 传感器测温上限 (°C)
@@ -238,16 +236,14 @@
     display_label: '加热水槽 / 工艺受水恒温区', // 功能标签
     role: 'heating_and_process', // 功能角色：工艺受水、电加热升温与恒温循环槽
 
-    // 4.1 物理结构与容器参数
+    // 4.1 物理结构与容器参数 (额定容积与有效储水容积由系统根据下方尺寸与阈值自动计算，无需手动写死)
     physical_specs: {
-      rated_capacity_liters: 100.0, // 额定设计容积 (升)
-      usable_capacity_liters: 90.0, // 最大安全有效储水容积 (升)
       material: 'SUS304 食品级双层不锈钢', // 槽体材质
       dimensions_mm: {
-        length: 500.0, // 水槽长度 (mm)
-        width: 250.0, // 水槽宽度 (mm)
-        height: 800.0, // 水槽整体物理高度 (mm)
-        wall_thickness: 5.0, // 槽壁厚度 (含耐热保温层)
+        length: 145.0, // 水槽长度 (mm)
+        width: 125.0, // 水槽宽度 (mm)
+        height: 90.0, // 水槽整体物理高度 (mm)
+        wall_thickness: 2.0, // 槽壁厚度 (含耐热保温层)
       },
       thermal_insulation: {
         enabled: true, // 加热水槽配置高温聚氨酯保温外壳

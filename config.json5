@@ -167,12 +167,14 @@
     display_label: '储水槽 / 常温供水主槽', // 功能标签
     role: 'storage_and_supply', // 功能角色：常温储水、回水沉淀与正向供水主槽
 
-    // 3.1 物理结构与容器参数 (额定容积与有效储水容积由系统根据下方尺寸与阈值自动计算，无需手动写死)
+    // 3.1 物理结构与容器参数 (额定容积与有效储水容积由系统根据下方尺寸与几何形状自动计算，无需手动写死)
     physical_specs: {
+      shape: 'cylindrical', // 水槽几何形状：'cylindrical' (圆柱形水槽) 或 'rectangular' (矩形/长方体水槽)
       material: 'SUS304 食品级不锈钢 / 高透明工业加厚亚克力', // 槽体材质
       dimensions_mm: {
-        length: 145.0, // 水槽长度 (mm)
-        width: 125.0, // 水槽宽度 (mm)
+        diameter: 145.0, // 水槽圆柱外径 / 直径 (mm) (圆柱形水槽生效)
+        length: 145.0, // 水槽长度 (mm) (矩形水槽时生效)
+        width: 125.0, // 水槽宽度 (mm) (矩形水槽时生效)
         height: 90.0, // 水槽整体物理高度 (mm)
         wall_thickness: 2.0, // 槽壁厚度 (mm)
       },
@@ -236,12 +238,14 @@
     display_label: '加热水槽 / 工艺受水恒温区', // 功能标签
     role: 'heating_and_process', // 功能角色：工艺受水、电加热升温与恒温循环槽
 
-    // 4.1 物理结构与容器参数 (额定容积与有效储水容积由系统根据下方尺寸与阈值自动计算，无需手动写死)
+    // 4.1 物理结构与容器参数 (额定容积与有效储水容积由系统根据下方尺寸与几何形状自动计算，无需手动写死)
     physical_specs: {
+      shape: 'cylindrical', // 水槽几何形状：'cylindrical' (圆柱形水槽) 或 'rectangular' (矩形/长方体水槽)
       material: 'SUS304 食品级双层不锈钢', // 槽体材质
       dimensions_mm: {
-        length: 145.0, // 水槽长度 (mm)
-        width: 125.0, // 水槽宽度 (mm)
+        diameter: 145.0, // 水槽圆柱外径 / 直径 (mm) (圆柱形水槽生效)
+        length: 145.0, // 水槽长度 (mm) (矩形水槽时生效)
+        width: 125.0, // 水槽宽度 (mm) (矩形水槽时生效)
         height: 90.0, // 水槽整体物理高度 (mm)
         wall_thickness: 2.0, // 槽壁厚度 (含耐热保温层)
       },

@@ -1,4 +1,5 @@
 import logging
+import math
 import os
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -32,18 +33,49 @@ class ConfigLoader:
                 return p.resolve()
         return None
 
+    @staticmethod
+    def is_cylindrical(specs: Dict[str, Any], dims: Dict[str, Any]) -> bool:
+        """Determines whether a tank has a cylindrical or rectangular geometry."""
+        shape = str(specs.get("shape", "")).strip().lower()
+        if shape in ("cylindrical", "cylinder", "round", "circular"):
+            return True
+        if shape in ("rectangular", "cuboid", "box", "square"):
+            return False
+        # If shape is not explicitly specified, infer from keys
+        if "diameter" in dims or "diameter_mm" in dims or "radius" in dims:
+            return True
+        if "width_or_diameter" in dims and "length" not in dims:
+            return True
+        return False
+
     def _compute_tank_specs(self) -> None:
-        """Dynamically computes rated capacity (Liters) based on dimensions_mm, avoiding hardcoded values."""
+        """Dynamically computes rated capacity (Liters) based on dimensions_mm (supports cylindrical & rectangular)."""
         for tank_key in ["storage_tank", "heating_tank"]:
             tank = self.raw_config.get(tank_key)
             if isinstance(tank, dict):
                 specs = tank.setdefault("physical_specs", {})
                 dims = specs.get("dimensions_mm", {})
-                length = float(dims.get("length", 0.0))
-                width = float(dims.get("width", dims.get("width_or_diameter", 0.0)))
+                is_cyl = self.is_cylindrical(specs, dims)
+                specs["shape"] = "cylindrical" if is_cyl else "rectangular"
                 height = float(dims.get("height", 0.0))
-                if length > 0 and width > 0 and height > 0:
-                    cap = round((length * width * height) / 1_000_000.0, 3)
+                cap = 0.0
+
+                if is_cyl:
+                    diameter = float(
+                        dims.get("diameter", dims.get("diameter_mm", dims.get("width_or_diameter", 0.0)))
+                    )
+                    if diameter <= 0.0 and "radius" in dims:
+                        diameter = float(dims["radius"]) * 2.0
+                    if diameter > 0.0 and height > 0.0:
+                        # V = pi * (d / 2)^2 * h in mm^3 -> / 1,000,000 (L)
+                        cap = round((math.pi * ((diameter / 2.0) ** 2) * height) / 1_000_000.0, 3)
+                else:
+                    length = float(dims.get("length", 0.0))
+                    width = float(dims.get("width", dims.get("width_or_diameter", 0.0)))
+                    if length > 0.0 and width > 0.0 and height > 0.0:
+                        cap = round((length * width * height) / 1_000_000.0, 3)
+
+                if cap > 0.0:
                     specs["rated_capacity_liters"] = cap
                     high_thr = float(
                         tank.get("water_level_monitoring", {}).get("high_level_alarm_threshold", 90.0)
@@ -120,23 +152,41 @@ class ConfigLoader:
         """Returns Heating Tank (Tank 2) specification."""
         return self.raw_config.get("heating_tank", {})
 
-    def get_tank_dimensions(self, tank_id: str = "tank_1") -> Dict[str, float]:
-        """Returns length, width, height (mm) and capacity in Liters for the specified tank."""
+    def get_tank_dimensions(self, tank_id: str = "tank_1") -> Dict[str, Any]:
+        """Returns geometry dimensions (mm) and capacity in Liters for the specified tank."""
         tank_cfg = self.storage_tank_config if tank_id == "tank_1" else self.heating_tank_config
-        dims = tank_cfg.get("physical_specs", {}).get("dimensions_mm", {})
-        length = float(dims.get("length", 0.0))
-        width = float(dims.get("width", dims.get("width_or_diameter", 0.0)))
+        specs = tank_cfg.get("physical_specs", {})
+        dims = specs.get("dimensions_mm", {})
+        is_cyl = self.is_cylindrical(specs, dims)
         height = float(dims.get("height", 0.0))
-        capacity_liters = (
-            float(tank_cfg.get("physical_specs", {}).get("rated_capacity_liters", 0.0))
-            or ((length * width * height) / 1_000_000.0 if (length > 0 and width > 0 and height > 0) else 0.0)
-        )
-        return {
-            "length_mm": length,
-            "width_mm": width,
-            "height_mm": height,
-            "capacity_liters": capacity_liters,
-        }
+        cap = float(specs.get("rated_capacity_liters", 0.0))
+
+        if is_cyl:
+            diameter = float(
+                dims.get("diameter", dims.get("diameter_mm", dims.get("width_or_diameter", 0.0)))
+            )
+            if diameter <= 0.0 and "radius" in dims:
+                diameter = float(dims["radius"]) * 2.0
+            if cap <= 0.0 and diameter > 0.0 and height > 0.0:
+                cap = (math.pi * ((diameter / 2.0) ** 2) * height) / 1_000_000.0
+            return {
+                "shape": "cylindrical",
+                "diameter_mm": diameter,
+                "height_mm": height,
+                "capacity_liters": cap,
+            }
+        else:
+            length = float(dims.get("length", 0.0))
+            width = float(dims.get("width", dims.get("width_or_diameter", 0.0)))
+            if cap <= 0.0 and length > 0.0 and width > 0.0 and height > 0.0:
+                cap = (length * width * height) / 1_000_000.0
+            return {
+                "shape": "rectangular",
+                "length_mm": length,
+                "width_mm": width,
+                "height_mm": height,
+                "capacity_liters": cap,
+            }
 
     @property
     def forward_compensation_percent(self) -> float:

@@ -55,34 +55,71 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
   const lvl1 = Math.max(0, Math.min(100, localLvl1 !== null ? localLvl1 : (telemetry?.water_level_tank1 ?? 75.0)));
   const lvl2 = Math.max(0, Math.min(100, localLvl2 !== null ? localLvl2 : (telemetry?.water_level_tank2 ?? 65.0)));
 
+  // Helper to dynamically check if tank is cylindrical
+  const isCylindricalTank = (
+    shape?: string,
+    dims?: { diameter?: number; diameter_mm?: number; length?: number; width?: number; width_or_diameter?: number } | null
+  ) => {
+    const s = shape?.toLowerCase() || '';
+    if (s.includes('cyl') || s.includes('round') || s.includes('circle')) return true;
+    if (s.includes('rect')) return false;
+    return Boolean((dims?.diameter || dims?.diameter_mm) && (!dims?.length || !dims?.width));
+  };
+
   // Helper to dynamically calculate tank capacity from dimensions (mm -> Liters)
-  const getCapacityLiters = (dims?: { length?: number; width?: number; width_or_diameter?: number; height?: number } | null, fallback?: number) => {
-    const l = Number(dims?.length || 0);
-    const w = Number(dims?.width || dims?.width_or_diameter || 0);
+  const getCapacityLiters = (
+    shape?: string,
+    dims?: { diameter?: number; diameter_mm?: number; length?: number; width?: number; width_or_diameter?: number; height?: number } | null,
+    fallback?: number
+  ) => {
     const h = Number(dims?.height || 0);
-    if (l > 0 && w > 0 && h > 0) {
-      return (l * w * h) / 1_000_000;
+    const isCyl = isCylindricalTank(shape, dims);
+    if (isCyl) {
+      const d = Number(dims?.diameter || dims?.diameter_mm || dims?.width_or_diameter || dims?.width || dims?.length || 0);
+      if (d > 0 && h > 0) {
+        return (Math.PI * Math.pow(d / 2, 2) * h) / 1_000_000;
+      }
+    } else {
+      const l = Number(dims?.length || 0);
+      const w = Number(dims?.width || dims?.width_or_diameter || 0);
+      if (l > 0 && w > 0 && h > 0) {
+        return (l * w * h) / 1_000_000;
+      }
     }
     return Number(fallback || 0);
   };
 
   // Tank 1 dimensions (mm) and dynamically calculated capacity (L) from config.json5
+  const shape1 = tank1Cfg?.physical_specs?.shape;
   const dims1 = tank1Cfg?.physical_specs?.dimensions_mm;
+  const isCyl1 = isCylindricalTank(shape1, dims1);
+  const d1 = Number(dims1?.diameter || dims1?.diameter_mm || dims1?.width || dims1?.length || 0);
   const l1 = Number(dims1?.length || 0);
   const w1 = Number(dims1?.width || dims1?.width_or_diameter || 0);
   const h1 = Number(dims1?.height || 0);
-  const cap1 = getCapacityLiters(dims1, tank1Cfg?.physical_specs?.rated_capacity_liters);
+  const cap1 = getCapacityLiters(shape1, dims1, tank1Cfg?.physical_specs?.rated_capacity_liters);
   const vol1 = cap1 > 0 ? (lvl1 / 100) * cap1 : 0;
   const height1Mm = (lvl1 / 100) * h1;
+  const area1Mm2 = isCyl1 ? Math.PI * Math.pow(d1 / 2, 2) : l1 * w1;
+  const area1Dm2 = area1Mm2 / 10_000;
+  const waterHeight1 = (lvl1 / 100) * 192;
+  const waterY1 = 216 - waterHeight1;
 
   // Tank 2 dimensions (mm) and dynamically calculated capacity (L) from config.json5
+  const shape2 = tank2Cfg?.physical_specs?.shape;
   const dims2 = tank2Cfg?.physical_specs?.dimensions_mm;
+  const isCyl2 = isCylindricalTank(shape2, dims2);
+  const d2 = Number(dims2?.diameter || dims2?.diameter_mm || dims2?.width || dims2?.length || 0);
   const l2 = Number(dims2?.length || 0);
   const w2 = Number(dims2?.width || dims2?.width_or_diameter || 0);
   const h2 = Number(dims2?.height || 0);
-  const cap2 = getCapacityLiters(dims2, tank2Cfg?.physical_specs?.rated_capacity_liters);
+  const cap2 = getCapacityLiters(shape2, dims2, tank2Cfg?.physical_specs?.rated_capacity_liters);
   const vol2 = cap2 > 0 ? (lvl2 / 100) * cap2 : 0;
   const height2Mm = (lvl2 / 100) * h2;
+  const area2Mm2 = isCyl2 ? Math.PI * Math.pow(d2 / 2, 2) : l2 * w2;
+  const area2Dm2 = area2Mm2 / 10_000;
+  const waterHeight2 = (lvl2 / 100) * 192;
+  const waterY2 = 216 - waterHeight2;
 
   const formatVol = (v: number) => (cap1 < 10 || cap2 < 10 ? v.toFixed(2) : v.toFixed(1)) + 'L';
   const formatCap = (c: number) => (c < 10 ? c.toFixed(2) : c.toFixed(1)) + 'L';
@@ -290,13 +327,19 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
             {/* Tank 1 Setting */}
             <div className="bg-white p-3.5 rounded-lg border border-slate-200 shadow-xs space-y-2.5">
               <div className="flex justify-between items-center text-xs">
-                <span className="font-semibold text-gray-800">{tank1Name} (储水槽) 起始高度</span>
+                <span className="font-semibold text-gray-800">
+                  {tank1Name} ({isCyl1 ? '圆柱形储水槽' : '矩形储水槽'}) 起始高度
+                </span>
                 <span className="text-[11px] font-mono text-cyan-700 bg-cyan-50 px-2 py-0.5 rounded border border-cyan-200">
                   {inputHeight1.toFixed(1)} mm ({calcPct1.toFixed(1)}% | {formatVol(calcVol1)})
                 </span>
               </div>
-              <div className="text-[11px] text-gray-500 flex justify-between">
-                <span>尺寸规格 (config.json5): {l1} × {w1} × {h1} mm (厚度 {dims1?.wall_thickness ?? 2}mm)</span>
+              <div className="text-[11px] text-gray-500 flex justify-between flex-wrap gap-1">
+                <span>
+                  {isCyl1
+                    ? `尺寸规格: 圆柱形 Φ${d1} × 高 ${h1} mm (壁厚 ${dims1?.wall_thickness ?? 2}mm, 底面积 ${area1Dm2.toFixed(2)}dm²)`
+                    : `尺寸规格: 矩形 ${l1} × ${w1} × ${h1} mm (壁厚 ${dims1?.wall_thickness ?? 2}mm, 底面积 ${area1Dm2.toFixed(2)}dm²)`}
+                </span>
                 <span>满槽高度: {h1} mm | 满容积: {formatCap(cap1)}</span>
               </div>
               <div className="flex items-center gap-2">
@@ -327,13 +370,19 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
             {/* Tank 2 Setting */}
             <div className="bg-white p-3.5 rounded-lg border border-slate-200 shadow-xs space-y-2.5">
               <div className="flex justify-between items-center text-xs">
-                <span className="font-semibold text-gray-800">{tank2Name} (加热槽) 起始高度</span>
+                <span className="font-semibold text-gray-800">
+                  {tank2Name} ({isCyl2 ? '圆柱形加热槽' : '矩形加热槽'}) 起始高度
+                </span>
                 <span className="text-[11px] font-mono text-cyan-700 bg-cyan-50 px-2 py-0.5 rounded border border-cyan-200">
                   {inputHeight2.toFixed(1)} mm ({calcPct2.toFixed(1)}% | {formatVol(calcVol2)})
                 </span>
               </div>
-              <div className="text-[11px] text-gray-500 flex justify-between">
-                <span>尺寸规格 (config.json5): {l2} × {w2} × {h2} mm (厚度 {dims2?.wall_thickness ?? 2}mm)</span>
+              <div className="text-[11px] text-gray-500 flex justify-between flex-wrap gap-1">
+                <span>
+                  {isCyl2
+                    ? `尺寸规格: 圆柱形 Φ${d2} × 高 ${h2} mm (壁厚 ${dims2?.wall_thickness ?? 2}mm, 底面积 ${area2Dm2.toFixed(2)}dm²)`
+                    : `尺寸规格: 矩形 ${l2} × ${w2} × ${h2} mm (壁厚 ${dims2?.wall_thickness ?? 2}mm, 底面积 ${area2Dm2.toFixed(2)}dm²)`}
+                </span>
                 <span>满槽高度: {h2} mm | 满容积: {formatCap(cap2)}</span>
               </div>
               <div className="flex items-center gap-2">
@@ -404,6 +453,30 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
               <stop offset="0%" stopColor={isHeaterOn ? "#f59e0b" : "#0284c7"} />
               <stop offset="50%" stopColor={isHeaterOn ? "#ef4444" : "#0284c7"} />
               <stop offset="100%" stopColor="#0284c7" />
+            </linearGradient>
+
+            {/* Cylindrical metallic shading gradient */}
+            <linearGradient id="cylinderBodyGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#cbd5e1" stopOpacity="0.75" />
+              <stop offset="15%" stopColor="#f8fafc" stopOpacity="0.95" />
+              <stop offset="50%" stopColor="#ffffff" stopOpacity="0.9" />
+              <stop offset="85%" stopColor="#f1f5f9" stopOpacity="0.95" />
+              <stop offset="100%" stopColor="#94a3b8" stopOpacity="0.8" />
+            </linearGradient>
+
+            {/* Cylindrical water column gradients */}
+            <linearGradient id="cylinderWaterGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#7dd3fc" stopOpacity="0.9" />
+              <stop offset="25%" stopColor="#bae6fd" stopOpacity="0.95" />
+              <stop offset="70%" stopColor="#e0f2fe" stopOpacity="0.9" />
+              <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.95" />
+            </linearGradient>
+
+            <linearGradient id="cylinderHeatedWaterGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#fb923c" stopOpacity="0.9" />
+              <stop offset="25%" stopColor="#fed7aa" stopOpacity="0.95" />
+              <stop offset="70%" stopColor="#ffedd5" stopOpacity="0.9" />
+              <stop offset="100%" stopColor="#f97316" stopOpacity="0.95" />
             </linearGradient>
 
             <style>
@@ -483,37 +556,79 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
 
           {/* ================= TANK 1 (Left: 储水槽1 / 常温储水) ================= */}
           <g transform="translate(60, 45)">
-            {/* Tank Outer Shell */}
-            <rect x="0" y="0" width="130" height="230" rx="12" fill="#ffffff" stroke="#94a3b8" strokeWidth="2.5" />
-            {/* Water Volume in Tank 1 */}
-            <rect
-              x="8"
-              y={220 - (lvl1 / 100) * 195}
-              width="114"
-              height={(lvl1 / 100) * 195}
-              rx="6"
-              fill="#e0f2fe"
-              opacity="0.85"
-            />
-            <path
-              d={`M 10 ${225 - (lvl1 / 100) * 195} Q 40 ${218 - (lvl1 / 100) * 195}, 70 ${225 - (lvl1 / 100) * 195} T 120 ${225 - (lvl1 / 100) * 195} L 120 215 L 10 215 Z`}
-              fill="#38bdf8"
-              opacity="0.6"
-            />
+            {isCyl1 ? (
+              <>
+                {/* Cylindrical Tank Base Depth Guide (back half) */}
+                <path d="M 5 216 A 60 12 0 0 1 125 216" fill="none" stroke="#e2e8f0" strokeWidth="1.5" strokeDasharray="3 3" />
+                {/* Cylindrical Tank Outer Body */}
+                <path d="M 5 16 L 5 216 A 60 12 0 0 0 125 216 L 125 16 Z" fill="url(#cylinderBodyGrad)" stroke="#94a3b8" strokeWidth="2.5" />
+
+                {/* Water Volume in Tank 1 */}
+                {lvl1 > 0 && (
+                  <>
+                    <path
+                      d={`M 7 ${waterY1} L 7 216 A 58 11 0 0 0 123 216 L 123 ${waterY1} Z`}
+                      fill="url(#cylinderWaterGrad)"
+                      opacity="0.88"
+                    />
+                    {/* Water Meniscus (Elliptical liquid surface) */}
+                    <ellipse
+                      cx="65"
+                      cy={waterY1}
+                      rx="58"
+                      ry="11"
+                      fill="#bae6fd"
+                      stroke="#0284c7"
+                      strokeWidth="1.2"
+                      opacity="0.95"
+                    />
+                    {lvl1 > 5 && (
+                      <ellipse cx="65" cy={waterY1} rx="46" ry="6.5" fill="#ffffff" fillOpacity="0.4" />
+                    )}
+                  </>
+                )}
+
+                {/* Cylindrical Top Rim Ellipses */}
+                <ellipse cx="65" cy="16" rx="60" ry="12" fill="#ffffff" fillOpacity="0.75" stroke="#94a3b8" strokeWidth="2.5" />
+                <ellipse cx="65" cy="16" rx="55" ry="9.5" fill="#f8fafc" fillOpacity="0.6" stroke="#cbd5e1" strokeWidth="1" strokeDasharray="2 2" />
+                {/* Front Bottom Rim Arc */}
+                <path d="M 5 216 A 60 12 0 0 0 125 216" fill="none" stroke="#94a3b8" strokeWidth="2.5" />
+              </>
+            ) : (
+              <>
+                {/* Rectangular Tank Outer Shell */}
+                <rect x="0" y="0" width="130" height="230" rx="12" fill="#ffffff" stroke="#94a3b8" strokeWidth="2.5" />
+                {/* Water Volume in Tank 1 */}
+                <rect
+                  x="8"
+                  y={220 - (lvl1 / 100) * 195}
+                  width="114"
+                  height={(lvl1 / 100) * 195}
+                  rx="6"
+                  fill="#e0f2fe"
+                  opacity="0.85"
+                />
+                <path
+                  d={`M 10 ${225 - (lvl1 / 100) * 195} Q 40 ${218 - (lvl1 / 100) * 195}, 70 ${225 - (lvl1 / 100) * 195} T 120 ${225 - (lvl1 / 100) * 195} L 120 215 L 10 215 Z`}
+                  fill="#38bdf8"
+                  opacity="0.6"
+                />
+              </>
+            )}
 
             {/* Scale Markings Ruler on Tank 1 */}
             <g opacity="0.35" stroke="#64748b" strokeWidth="1">
-              <line x1="8" y1="25" x2="16" y2="25" />
-              <line x1="8" y1="74" x2="13" y2="74" />
-              <line x1="8" y1="123" x2="13" y2="123" />
-              <line x1="8" y1="171" x2="13" y2="171" />
-              <line x1="8" y1="220" x2="16" y2="220" />
+              <line x1={isCyl1 ? "10" : "8"} y1="24" x2={isCyl1 ? "18" : "16"} y2="24" />
+              <line x1={isCyl1 ? "10" : "8"} y1="72" x2={isCyl1 ? "15" : "13"} y2="72" />
+              <line x1={isCyl1 ? "10" : "8"} y1="120" x2={isCyl1 ? "15" : "13"} y2="120" />
+              <line x1={isCyl1 ? "10" : "8"} y1="168" x2={isCyl1 ? "15" : "13"} y2="168" />
+              <line x1={isCyl1 ? "10" : "8"} y1="216" x2={isCyl1 ? "18" : "16"} y2="216" />
             </g>
             <g opacity="0.45" fontSize="7.5" fill="#64748b" textAnchor="start">
-              <text x="18" y="28">100%</text>
-              <text x="15" y="77">75%</text>
-              <text x="15" y="126">50%</text>
-              <text x="15" y="174">25%</text>
+              <text x={isCyl1 ? "20" : "18"} y="27">100%</text>
+              <text x={isCyl1 ? "17" : "15"} y="75">75%</text>
+              <text x={isCyl1 ? "17" : "15"} y="123">50%</text>
+              <text x={isCyl1 ? "17" : "15"} y="171">25%</text>
             </g>
 
             {/* Titles */}
@@ -555,7 +670,9 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
 
             {/* Dimensions Subtitle under Tank 1 */}
             <text x="65" y="244" fill="#64748b" fontSize="8.5" textAnchor="middle">
-              尺寸: {l1}×{w1}×{h1}mm ({formatCap(cap1)})
+              {isCyl1
+                ? `尺寸: Φ${d1}×${h1}mm (圆柱 ${formatCap(cap1)})`
+                : `尺寸: ${l1}×${w1}×${h1}mm (${formatCap(cap1)})`}
             </text>
           </g>
 
@@ -615,37 +732,79 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
 
           {/* ================= TANK 2 (Right: 储水槽2 / 恒温加热) ================= */}
           <g transform="translate(790, 45)">
-            {/* Tank Outer Shell */}
-            <rect x="0" y="0" width="130" height="230" rx="12" fill="#ffffff" stroke="#94a3b8" strokeWidth="2.5" />
-            {/* Water Volume in Tank 2 */}
-            <rect
-              x="8"
-              y={220 - (lvl2 / 100) * 195}
-              width="114"
-              height={(lvl2 / 100) * 195}
-              rx="6"
-              fill={isHeaterOn ? "#fed7aa" : "#e0f2fe"}
-              opacity="0.85"
-            />
-            <path
-              d={`M 10 ${225 - (lvl2 / 100) * 195} Q 40 ${218 - (lvl2 / 100) * 195}, 70 ${225 - (lvl2 / 100) * 195} T 120 ${225 - (lvl2 / 100) * 195} L 120 215 L 10 215 Z`}
-              fill={isHeaterOn ? "#fb923c" : "#38bdf8"}
-              opacity="0.6"
-            />
+            {isCyl2 ? (
+              <>
+                {/* Cylindrical Tank Base Depth Guide (back half) */}
+                <path d="M 5 216 A 60 12 0 0 1 125 216" fill="none" stroke="#e2e8f0" strokeWidth="1.5" strokeDasharray="3 3" />
+                {/* Cylindrical Tank Outer Body */}
+                <path d="M 5 16 L 5 216 A 60 12 0 0 0 125 216 L 125 16 Z" fill="url(#cylinderBodyGrad)" stroke="#94a3b8" strokeWidth="2.5" />
+
+                {/* Water Volume in Tank 2 */}
+                {lvl2 > 0 && (
+                  <>
+                    <path
+                      d={`M 7 ${waterY2} L 7 216 A 58 11 0 0 0 123 216 L 123 ${waterY2} Z`}
+                      fill={isHeaterOn ? "url(#cylinderHeatedWaterGrad)" : "url(#cylinderWaterGrad)"}
+                      opacity="0.88"
+                    />
+                    {/* Water Meniscus (Elliptical liquid surface) */}
+                    <ellipse
+                      cx="65"
+                      cy={waterY2}
+                      rx="58"
+                      ry="11"
+                      fill={isHeaterOn ? "#fed7aa" : "#bae6fd"}
+                      stroke={isHeaterOn ? "#ea580c" : "#0284c7"}
+                      strokeWidth="1.2"
+                      opacity="0.95"
+                    />
+                    {lvl2 > 5 && (
+                      <ellipse cx="65" cy={waterY2} rx="46" ry="6.5" fill="#ffffff" fillOpacity="0.4" />
+                    )}
+                  </>
+                )}
+
+                {/* Cylindrical Top Rim Ellipses */}
+                <ellipse cx="65" cy="16" rx="60" ry="12" fill="#ffffff" fillOpacity="0.75" stroke="#94a3b8" strokeWidth="2.5" />
+                <ellipse cx="65" cy="16" rx="55" ry="9.5" fill="#f8fafc" fillOpacity="0.6" stroke="#cbd5e1" strokeWidth="1" strokeDasharray="2 2" />
+                {/* Front Bottom Rim Arc */}
+                <path d="M 5 216 A 60 12 0 0 0 125 216" fill="none" stroke="#94a3b8" strokeWidth="2.5" />
+              </>
+            ) : (
+              <>
+                {/* Rectangular Tank Outer Shell */}
+                <rect x="0" y="0" width="130" height="230" rx="12" fill="#ffffff" stroke="#94a3b8" strokeWidth="2.5" />
+                {/* Water Volume in Tank 2 */}
+                <rect
+                  x="8"
+                  y={220 - (lvl2 / 100) * 195}
+                  width="114"
+                  height={(lvl2 / 100) * 195}
+                  rx="6"
+                  fill={isHeaterOn ? "#fed7aa" : "#e0f2fe"}
+                  opacity="0.85"
+                />
+                <path
+                  d={`M 10 ${225 - (lvl2 / 100) * 195} Q 40 ${218 - (lvl2 / 100) * 195}, 70 ${225 - (lvl2 / 100) * 195} T 120 ${225 - (lvl2 / 100) * 195} L 120 215 L 10 215 Z`}
+                  fill={isHeaterOn ? "#fb923c" : "#38bdf8"}
+                  opacity="0.6"
+                />
+              </>
+            )}
 
             {/* Scale Markings Ruler on Tank 2 */}
             <g opacity="0.35" stroke="#64748b" strokeWidth="1">
-              <line x1="8" y1="25" x2="16" y2="25" />
-              <line x1="8" y1="74" x2="13" y2="74" />
-              <line x1="8" y1="123" x2="13" y2="123" />
-              <line x1="8" y1="171" x2="13" y2="171" />
-              <line x1="8" y1="220" x2="16" y2="220" />
+              <line x1={isCyl2 ? "10" : "8"} y1="24" x2={isCyl2 ? "18" : "16"} y2="24" />
+              <line x1={isCyl2 ? "10" : "8"} y1="72" x2={isCyl2 ? "15" : "13"} y2="72" />
+              <line x1={isCyl2 ? "10" : "8"} y1="120" x2={isCyl2 ? "15" : "13"} y2="120" />
+              <line x1={isCyl2 ? "10" : "8"} y1="168" x2={isCyl2 ? "15" : "13"} y2="168" />
+              <line x1={isCyl2 ? "10" : "8"} y1="216" x2={isCyl2 ? "18" : "16"} y2="216" />
             </g>
             <g opacity="0.45" fontSize="7.5" fill="#64748b" textAnchor="start">
-              <text x="18" y="28">100%</text>
-              <text x="15" y="77">75%</text>
-              <text x="15" y="126">50%</text>
-              <text x="15" y="174">25%</text>
+              <text x={isCyl2 ? "20" : "18"} y="27">100%</text>
+              <text x={isCyl2 ? "17" : "15"} y="75">75%</text>
+              <text x={isCyl2 ? "17" : "15"} y="123">50%</text>
+              <text x={isCyl2 ? "17" : "15"} y="171">25%</text>
             </g>
 
             {/* Titles */}
@@ -711,7 +870,9 @@ export const PipelineTopology: React.FC<PipelineTopologyProps> = ({
 
             {/* Dimensions Subtitle under Tank 2 */}
             <text x="65" y="244" fill="#64748b" fontSize="8.5" textAnchor="middle">
-              尺寸: {l2}×{w2}×{h2}mm ({formatCap(cap2)})
+              {isCyl2
+                ? `尺寸: Φ${d2}×${h2}mm (圆柱 ${formatCap(cap2)})`
+                : `尺寸: ${l2}×${w2}×${h2}mm (${formatCap(cap2)})`}
             </text>
           </g>
 

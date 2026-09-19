@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import json
+import math
 import os
 from pathlib import Path
 import random
@@ -55,13 +56,32 @@ class SinglePipeDualTankSimulator:
         self.max_flow = max_flow
 
         # Physical dimensions from config.json5 (Length, Width, Height in mm -> capacity in Liters)
-        dims1 = _TANK1_CFG.get("physical_specs", {}).get("dimensions_mm", {})
-        l1, w1, h1 = float(dims1.get("length", 0.0)), float(dims1.get("width", dims1.get("width_or_diameter", 0.0))), float(dims1.get("height", 0.0))
-        self.tank1_capacity_l = (l1 * w1 * h1) / 1_000_000.0 if (l1 > 0 and w1 > 0 and h1 > 0) else 1.0
+        def _calc_tank_cap(tank_cfg: dict) -> float:
+            specs = tank_cfg.get("physical_specs", {})
+            if specs.get("rated_capacity_liters"):
+                return float(specs["rated_capacity_liters"])
+            dims = specs.get("dimensions_mm", {})
+            h = float(dims.get("height", 0.0))
+            shape = str(specs.get("shape", "")).strip().lower()
+            is_cyl = shape in ("cylindrical", "cylinder", "round", "circular") or (
+                ("diameter" in dims or "diameter_mm" in dims or "radius" in dims)
+                or ("width_or_diameter" in dims and "length" not in dims)
+            )
+            if is_cyl:
+                d = float(dims.get("diameter", dims.get("diameter_mm", dims.get("width_or_diameter", 0.0))))
+                if d <= 0.0 and "radius" in dims:
+                    d = float(dims["radius"]) * 2.0
+                if d > 0.0 and h > 0.0:
+                    return (math.pi * ((d / 2.0) ** 2) * h) / 1_000_000.0
+            else:
+                l = float(dims.get("length", 0.0))
+                w = float(dims.get("width", dims.get("width_or_diameter", 0.0)))
+                if l > 0.0 and w > 0.0 and h > 0.0:
+                    return (l * w * h) / 1_000_000.0
+            return 1.0
 
-        dims2 = _TANK2_CFG.get("physical_specs", {}).get("dimensions_mm", {})
-        l2, w2, h2 = float(dims2.get("length", 0.0)), float(dims2.get("width", dims2.get("width_or_diameter", 0.0))), float(dims2.get("height", 0.0))
-        self.tank2_capacity_l = (l2 * w2 * h2) / 1_000_000.0 if (l2 > 0 and w2 > 0 and h2 > 0) else 1.0
+        self.tank1_capacity_l = _calc_tank_cap(_TANK1_CFG)
+        self.tank2_capacity_l = _calc_tank_cap(_TANK2_CFG)
 
         # Physical state variables for 2 water tanks connected by 1 single pipe (from config.json5)
         self.temp_tank1 = float(_TANK1_CFG.get("temperature_monitoring", {}).get("nominal_temperature_celsius", 48.0))

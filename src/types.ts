@@ -229,10 +229,13 @@ export interface SystemConfigResponse {
       name?: string;
       display_label?: string;
       physical_specs?: {
+        shape?: 'cylindrical' | 'rectangular' | 'cylinder' | 'rectangle' | string;
         rated_capacity_liters?: number;
         usable_capacity_liters?: number;
         material?: string;
         dimensions_mm?: {
+          diameter?: number;
+          diameter_mm?: number;
           length?: number;
           width?: number;
           height?: number;
@@ -258,10 +261,13 @@ export interface SystemConfigResponse {
       name?: string;
       display_label?: string;
       physical_specs?: {
+        shape?: 'cylindrical' | 'rectangular' | 'cylinder' | 'rectangle' | string;
         rated_capacity_liters?: number;
         usable_capacity_liters?: number;
         material?: string;
         dimensions_mm?: {
+          diameter?: number;
+          diameter_mm?: number;
           length?: number;
           width?: number;
           height?: number;

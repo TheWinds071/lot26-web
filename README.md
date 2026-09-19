@@ -107,11 +107,10 @@ TCP 服务端默认监听端口：`8888`（可通过环境变量 `TCP_PORT` 自�
   "temp_tank1": 48.0,
   "temp_tank2": 32.0,
   "pressure": 35000.0,
-  "flow_rate": 0.35,
-  "water_level_tank1": 75.0,
-  "water_level_tank2": 65.0
+  "flow_rate": 0.35
 }
 ```
+> 注：双水槽水位逻辑由前后端全权计算与管理，不接受 TCP Client 的水位上报，TCP 下行亦不向客户端发送水位指令。
 
 #### 格式 B：CSV / 紧凑文本格式
 4 字段格式（水槽1温度, 水槽2温度, 压力, 流量）：

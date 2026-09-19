@@ -17,8 +17,6 @@ def main():
             "temp_tank2": 42.0,
             "pressure": 35000.0,
             "flow_rate": 18.5,
-            "water_level_tank1": 80.0,
-            "water_level_tank2": 65.0,
         })
 
     if not message.endswith("\n"):

@@ -38,6 +38,10 @@ class StateManager:
             if persisted_records:
                 self.telemetry_history.extend(persisted_records)
                 self.latest_telemetry = persisted_records[-1]
+                if self.latest_telemetry.water_level_tank1 is not None:
+                    self.water_level_tank1 = float(self.latest_telemetry.water_level_tank1)
+                if self.latest_telemetry.water_level_tank2 is not None:
+                    self.water_level_tank2 = float(self.latest_telemetry.water_level_tank2)
                 logger.info(f"Loaded {len(persisted_records)} historical telemetry records from SQLite.")
 
             persisted_alarms = self.db.get_alarm_history(limit=alarm_limit)
@@ -72,13 +76,14 @@ class StateManager:
         self.tcp_client_connected = False
         self.last_packet_time: Optional[datetime] = None
         self._last_flow_calc_time: Optional[datetime] = None
-        self.pending_water_level_updates: Dict[str, float] = {}
 
-        # Water levels for Tank 1 and Tank 2 (%)
+        # Water levels for Tank 1 and Tank 2 (%) - managed purely in frontend/backend
         _t1_cfg = config_loader.storage_tank_config.get("water_level_monitoring", {})
         _t2_cfg = config_loader.heating_tank_config.get("water_level_monitoring", {})
-        self.water_level_tank1: float = float(_t1_cfg.get("initial_level_percentage", _t1_cfg.get("nominal_level_percentage", 75.0)))
-        self.water_level_tank2: float = float(_t2_cfg.get("initial_level_percentage", _t2_cfg.get("nominal_level_percentage", 65.0)))
+        if not hasattr(self, "water_level_tank1"):
+            self.water_level_tank1 = float(_t1_cfg.get("initial_level_percentage", _t1_cfg.get("nominal_level_percentage", 75.0)))
+        if not hasattr(self, "water_level_tank2"):
+            self.water_level_tank2 = float(_t2_cfg.get("initial_level_percentage", _t2_cfg.get("nominal_level_percentage", 65.0)))
 
         # Listeners for real-time websocket broadcast
         self._listeners: Set[Callable[[dict], None]] = set()
@@ -188,11 +193,8 @@ class StateManager:
             else:
                 self.water_level_tank1 = min(100.0, self.water_level_tank1 + dlvl1)
                 self.water_level_tank2 = max(0.0, self.water_level_tank2 - dlvl2)
-        elif telemetry.water_level_tank1 is not None and not self.pending_water_level_updates:
-            # If pump is idle and telemetry has level without pending overrides, sync
-            self.water_level_tank1 = telemetry.water_level_tank1
-            self.water_level_tank2 = telemetry.water_level_tank2
 
+        # 水位逻辑只在前后端维护，不从 TCP Client 接收水位数据，由后端直接赋值给 telemetry
         telemetry.water_level_tank1 = round(self.water_level_tank1, 1)
         telemetry.water_level_tank2 = round(self.water_level_tank2, 1)
 
@@ -672,17 +674,15 @@ class StateManager:
         level_tank1: Optional[float] = None,
         level_tank2: Optional[float] = None,
     ) -> Dict[str, float]:
-        """Manually sets/resets the current water level percentages for Tank 1 and/or Tank 2."""
+        """Manually sets/resets the current water level percentages for Tank 1 and/or Tank 2 (frontend/backend only)."""
         res = {}
         if level_tank1 is not None:
             val1 = max(0.0, min(100.0, round(float(level_tank1), 1)))
             self.water_level_tank1 = val1
-            self.pending_water_level_updates["set_water_level_tank1"] = val1
             res["water_level_tank1"] = val1
         if level_tank2 is not None:
             val2 = max(0.0, min(100.0, round(float(level_tank2), 1)))
             self.water_level_tank2 = val2
-            self.pending_water_level_updates["set_water_level_tank2"] = val2
             res["water_level_tank2"] = val2
 
         if self.latest_telemetry is None:

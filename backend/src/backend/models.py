@@ -13,8 +13,8 @@ class TelemetryData(BaseModel):
     pressure: float = Field(..., description="Single Pipe Pressure in Pa")
     flow_rate: float = Field(..., description="Single Pipe Flow Rate in L/min")
     total_volume: Optional[float] = Field(default=0.0, description="Accumulated pipe flow volume in liters (L)")
-    water_level_tank1: Optional[float] = Field(default=75.0, description="Tank 1 Water Level (%)")
-    water_level_tank2: Optional[float] = Field(default=65.0, description="Tank 2 Water Level (%)")
+    water_level_tank1: Optional[float] = Field(default=None, description="Tank 1 Water Level (%)")
+    water_level_tank2: Optional[float] = Field(default=None, description="Tank 2 Water Level (%)")
     timestamp: datetime = Field(default_factory=datetime.now, description="Timestamp")
 
     def model_post_init(self, __context):

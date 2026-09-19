@@ -66,8 +66,7 @@ class SinglePipeDualTankSimulator:
         # Physical state variables for 2 water tanks connected by 1 single pipe (from config.json5)
         self.temp_tank1 = float(_TANK1_CFG.get("temperature_monitoring", {}).get("nominal_temperature_celsius", 48.0))
         self.temp_tank2 = float(_TANK2_CFG.get("temperature_monitoring", {}).get("nominal_temperature_celsius", 32.0))
-        self.water_level_tank1 = float(_TANK1_CFG.get("water_level_monitoring", {}).get("initial_level_percentage", _TANK1_CFG.get("water_level_monitoring", {}).get("nominal_level_percentage", 75.0)))
-        self.water_level_tank2 = float(_TANK2_CFG.get("water_level_monitoring", {}).get("initial_level_percentage", _TANK2_CFG.get("water_level_monitoring", {}).get("nominal_level_percentage", 65.0)))
+        # 水位逻辑只在前后端维护，TCP Client / 模拟器不维护也不发送水位
 
         self.ambient_temp = 22.0  # Ambient room temp (°C)
         self.pressure = 4000.0    # Single pipe pressure (Pa, idle)
@@ -145,13 +144,9 @@ class SinglePipeDualTankSimulator:
                 if self.pump_direction == "FORWARD":
                     # FORWARD (1 -> 2): Water flows from Tank 1 into Tank 2
                     self.temp_tank2 += (self.temp_tank1 - self.temp_tank2) * transfer_rate
-                    self.water_level_tank1 = max(0.0, self.water_level_tank1 - dlvl1)
-                    self.water_level_tank2 = min(100.0, self.water_level_tank2 + dlvl2)
                 else:
                     # REVERSE (2 -> 1): Water from Tank 2 flows into Tank 1
                     self.temp_tank1 += (self.temp_tank2 - self.temp_tank1) * transfer_rate
-                    self.water_level_tank1 = min(100.0, self.water_level_tank1 + dlvl1)
-                    self.water_level_tank2 = max(0.0, self.water_level_tank2 - dlvl2)
 
         self.temp_tank1 += random.uniform(-0.03, 0.03)
         self.temp_tank2 += random.uniform(-0.03, 0.03)
@@ -178,8 +173,6 @@ class SinglePipeDualTankSimulator:
                         "pressure": round(self.pressure, 3),
                         "flow_rate": round(self.flow_rate, 2),
                         "total_volume": round(self.accumulated_volume, 3),
-                        "water_level_tank1": round(self.water_level_tank1, 1),
-                        "water_level_tank2": round(self.water_level_tank2, 1),
                     }
                     data_str = json.dumps(payload) + "\n"
                     writer.write(data_str.encode("utf-8"))
@@ -218,12 +211,6 @@ class SinglePipeDualTankSimulator:
                                     self.emergency_stop = resp_json["emergency_stop"]
                                 if resp_json.get("target_volume_reached"):
                                     print("🎯 [Simulator] Target volume reached! Water pump auto-stopped by SCADA controller.")
-                                if "set_water_level_tank1" in resp_json:
-                                    self.water_level_tank1 = max(0.0, min(100.0, float(resp_json["set_water_level_tank1"])))
-                                    print(f"💧 [Simulator] Water level Tank 1 set to: {self.water_level_tank1:.1f}%")
-                                if "set_water_level_tank2" in resp_json:
-                                    self.water_level_tank2 = max(0.0, min(100.0, float(resp_json["set_water_level_tank2"])))
-                                    print(f"💧 [Simulator] Water level Tank 2 set to: {self.water_level_tank2:.1f}%")
                             # Drain any additional queued lines in reader buffer
                             if not reader.at_eof() and reader._buffer:
                                 resp_data = await reader.readline()

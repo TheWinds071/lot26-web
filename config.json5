@@ -46,7 +46,7 @@
         supported_formats: [
           {
             format_name: 'JSON_PAYLOAD', // 格式 A：标准 JSON 报文 (推荐)
-            description: '标准键值对格式，包含完整双槽温度、单管水压流速及液位',
+            description: '标准键值对格式，包含双槽温度、单管水压流速及累计流量（水位数据由前后端独立计算与管理，不经由 TCP 传输）',
             example: {
               device_id: 'DUAL_TANK_STATION_01', // 设备唯一编码
               temp_tank1: 48.0, // 水槽1当前水温 (°C)
@@ -55,8 +55,6 @@
               pressure: 35000.0, // 单管路流体压力 (Pa)
               flow_rate: 0.35, // 单管路水流流速 (L/min)
               total_volume: 2.5, // 管道累计流量 (L，可选)
-              water_level_tank1: 75.0, // 水槽1当前液位百分比 (%)
-              water_level_tank2: 65.0, // 水槽2当前液位百分比 (%)
               timestamp: '2026-09-12T10:00:00', // 采集时间戳 (ISO 8601，可选)
             },
           },
@@ -412,8 +410,8 @@
       volume_control: {
         enabled: true, // 是否启用定量控制功能 (达到设定水量时自动停泵)
         target_volume_liters: 10.00, // 目标供水累计水量设定值 (升, L，支持2位小数)
-        forward_compensation_percent: 40.0, // 正转供水内部补偿百分比 (正转 水槽1➔2 时内部自动补偿多进入设定水量的百分比，如 40.0 表示多进 40% 水量)
-        reverse_compensation_percent: 40.0, // 反转供水内部补偿百分比 (反转 水槽2➔1 时内部自动补偿多进入设定水量的百分比，如 40.0 表示多进 40% 水量)
+        forward_compensation_percent: 24.0, // 正转供水内部补偿百分比 (正转 水槽1➔2 时内部自动补偿多进入设定水量的百分比，如 40.0 表示多进 40% 水量)
+        reverse_compensation_percent: 50.0, // 反转供水内部补偿百分比 (反转 水槽2➔1 时内部自动补偿多进入设定水量的百分比，如 40.0 表示多进 40% 水量)
         auto_stop_pump: true, // 到达设定值时自动停止水泵
         unit: 'L',
       },

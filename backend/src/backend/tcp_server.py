@@ -47,10 +47,9 @@ class TCPServer:
 
                 press = float(data.get("pressure", data.get("press", data.get("p", 0.0))))
                 flow = float(data.get("flow_rate", data.get("flow", data.get("f", 0.0))))
-                lvl1 = float(data.get("water_level_tank1", data.get("lvl1", state_manager.water_level_tank1)))
-                lvl2 = float(data.get("water_level_tank2", data.get("lvl2", state_manager.water_level_tank2)))
                 dev_id = str(data.get("device_id", data.get("dev", "DUAL_TANK_STATION_01")))
 
+                # 水位逻辑只在前后端，不接受 TCP Client 的水位消息
                 return TelemetryData(
                     device_id=dev_id,
                     temp_tank1=t1,
@@ -58,8 +57,8 @@ class TCPServer:
                     temperature=round((t1 + t2) / 2.0, 2),
                     pressure=press,
                     flow_rate=flow,
-                    water_level_tank1=lvl1,
-                    water_level_tank2=lvl2,
+                    water_level_tank1=None,
+                    water_level_tank2=None,
                     timestamp=datetime.now(),
                 )
             except Exception as e:
@@ -160,9 +159,7 @@ class TCPServer:
                                 "emergency_stop": state_manager.device_state.emergency_stop,
                                 "timestamp": datetime.now().isoformat(),
                             }
-                            if state_manager.pending_water_level_updates:
-                                response.update(state_manager.pending_water_level_updates)
-                                state_manager.pending_water_level_updates.clear()
+                            # 水位逻辑只在前后端，不向 TCP Client 发送任何水位消息
                             writer.write((json.dumps(response) + "\n").encode("utf-8"))
                             await writer.drain()
 
